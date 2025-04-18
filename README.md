@@ -8,7 +8,7 @@ This tool ensures that MCP configurations are consistent across different applic
 
 - Cursor
 - Codeium Windsurf
-- Roocode
+- Roocode (VSCode and Windsurf versions)
 - Claude Desktop
 
 The tool supports:
@@ -39,7 +39,8 @@ python mcp_config_sync.py --source Cursor
 Supported source names:
 - Cursor
 - Windsurf
-- Roocode
+- Roocode-VSCode
+- Roocode-Windsurf
 - Claude
 
 You can also specify a custom file path:
@@ -54,7 +55,8 @@ The script looks for MCP configuration files in these default locations:
 
 - Cursor: `~/.cursor/mcp.json`
 - Windsurf: `~/.codeium/windsurf/mcp_config.json`
-- Roocode: `~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json`
+- Roocode-VSCode: `~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json`
+- Roocode-Windsurf: `~/Library/Application Support/Windsurf - Next/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json`
 - Claude: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ## How It Works

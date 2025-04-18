@@ -14,8 +14,10 @@ class MCPConfigSynchronizer:
     CONFIG_FILES = {
         'Cursor': Path.home() / '.cursor' / 'mcp.json',
         'Windsurf': Path.home() / '.codeium' / 'windsurf' / 'mcp_config.json',
-        'Roocode': Path.home() / 'Library' / 'Application Support' / 'Code' / 'User' / 
+        'Roocode-VSCode': Path.home() / 'Library' / 'Application Support' / 'Code' / 'User' / 
                   'globalStorage' / 'rooveterinaryinc.roo-cline' / 'settings' / 'cline_mcp_settings.json',
+        'Roocode-Windsurf': Path.home() / 'Library' / 'Application Support' / 'Windsurf - Next' / 'User' /
+                  'globalStorage' / 'rooveterinaryinc.roo-cline' / 'settings' / 'mcp_settings.json',
         'Claude': Path.home() / 'Library' / 'Application Support' / 'Claude' / 'claude_desktop_config.json'
     }
     
