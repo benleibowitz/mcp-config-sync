@@ -165,9 +165,35 @@ class MCPConfigSynchronizer:
                 
             mcp_config = config.get('mcp', {})
             
-            if mcp_config != reference_config:
+            # Check if all fields in the reference config exist with the same values in the app config
+            # This allows app configs to have additional fields that aren't in the reference
+            is_in_sync = True
+            mismatched_keys = []
+            
+            def check_nested_dict(ref_dict, app_dict, path=""):
+                nonlocal is_in_sync, mismatched_keys
+                for key, ref_value in ref_dict.items():
+                    if key not in app_dict:
+                        is_in_sync = False
+                        mismatched_keys.append(f"{path}{key} (missing)")
+                        continue
+                        
+                    app_value = app_dict[key]
+                    if isinstance(ref_value, dict) and isinstance(app_value, dict):
+                        check_nested_dict(ref_value, app_value, f"{path}{key}.")
+                    elif ref_value != app_value:
+                        is_in_sync = False
+                        mismatched_keys.append(f"{path}{key} (value mismatch)")
+            
+            check_nested_dict(reference_config, mcp_config)
+            
+            if not is_in_sync:
                 logger.warning(f"Config mismatch detected for {app_name} at {config_path}")
-                validation_results[app_name] = {'in_sync': False, 'reason': 'mismatch'}
+                validation_results[app_name] = {
+                    'in_sync': False, 
+                    'reason': 'mismatch',
+                    'mismatched_keys': mismatched_keys
+                }
                 all_in_sync = False
             else:
                 validation_results[app_name] = {'in_sync': True}
@@ -222,7 +248,25 @@ class MCPConfigSynchronizer:
                 if validation:
                     in_sync = validation.get('in_sync', False)
                     sync_icon = "✓" if in_sync else "✗"
-                    sync_status = "in_sync" if in_sync else f"out_of_sync ({validation.get('reason', 'unknown')})"
+                    
+                    if in_sync:
+                        sync_status = "in_sync"
+                    else:
+                        reason = validation.get('reason', 'unknown')
+                        sync_status = f"out_of_sync ({reason})"
+                        
+                        # Add detailed mismatch information if available
+                        if reason == 'mismatch' and 'mismatched_keys' in validation:
+                            mismatched_keys = validation['mismatched_keys']
+                            if len(mismatched_keys) > 0:
+                                print(f"   Validation: {sync_icon} {sync_status}")
+                                print(f"   Mismatched keys:")
+                                for key in mismatched_keys[:5]:  # Show first 5 mismatches to avoid overwhelming
+                                    print(f"      - {key}")
+                                if len(mismatched_keys) > 5:
+                                    print(f"      - ...and {len(mismatched_keys) - 5} more")
+                                continue
+                    
                     print(f"   Validation: {sync_icon} {sync_status}")
             else:
                 print(f"   Action: {result.get('action', 'failed')}")
