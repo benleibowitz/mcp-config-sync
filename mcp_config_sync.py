@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import logging
 from datetime import datetime
+import argparse
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -66,10 +68,11 @@ class MCPConfigSynchronizer:
             return {}
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse config at {config_path}: {e}")
-            return {}
+            # Return None to indicate a parsing error, not just an empty config
+            return None
         except Exception as e:
             logger.error(f"Error loading config at {config_path}: {e}")
-            return {}
+            return None
     
     def merge_configs(self, existing_config, new_config):
         """Merge existing config with new config, preserving existing values where applicable."""
@@ -86,18 +89,29 @@ class MCPConfigSynchronizer:
     def update_configs(self, custom_config=None):
         """Update all configuration files with the specified MCP configuration."""
         self.ensure_directories()
-        self.sync_results = {}
         
         if custom_config:
             self.config = self.merge_configs(self.config, custom_config)
         
+        results = {}
         for app_name, config_path in self.CONFIG_FILES.items():
             try:
-                # Track if file existed before
-                file_existed = config_path.exists()
-                
                 # Load existing config to preserve any app-specific settings
                 existing_config = self.load_existing_config(config_path)
+                
+                # If parsing failed, skip this config
+                if existing_config is None:
+                    logger.error(f"Skipping update for {app_name} due to parsing error")
+                    results[app_name] = {
+                        'success': False, 
+                        'path': config_path,
+                        'error': 'Failed to parse existing config',
+                        'action': 'skipped'
+                    }
+                    continue
+                
+                # Get file status before update
+                file_existed = config_path.exists()
                 
                 # Merge with new MCP config
                 updated_config = self.merge_configs(existing_config, {'mcp': self.config})
@@ -106,193 +120,188 @@ class MCPConfigSynchronizer:
                 with open(config_path, 'w') as f:
                     json.dump(updated_config, f, indent=2)
                 
-                self.sync_results[app_name] = {
-                    'status': 'success',
-                    'path': str(config_path),
-                    'action': 'updated' if file_existed else 'created',
-                    'size': os.path.getsize(config_path)
+                # Record result
+                action = 'updated' if file_existed else 'created'
+                logger.info(f"Successfully {action} config for {app_name} at {config_path}")
+                results[app_name] = {
+                    'success': True, 
+                    'path': config_path,
+                    'action': action,
+                    'size': config_path.stat().st_size
                 }
-                
-                logger.info(f"Successfully updated config for {app_name} at {config_path}")
                 
             except Exception as e:
-                self.sync_results[app_name] = {
-                    'status': 'failed',
-                    'path': str(config_path),
-                    'error': str(e)
-                }
                 logger.error(f"Failed to update config for {app_name} at {config_path}: {e}")
+                results[app_name] = {
+                    'success': False, 
+                    'path': config_path,
+                    'error': str(e),
+                    'action': 'failed'
+                }
+        
+        return results
+    
+    def validate_configs(self, reference_config=None):
+        """Validate that all configuration files are in sync and properly formatted."""
+        if reference_config is None:
+            reference_config = self.config
+        
+        all_in_sync = True
+        validation_results = {}
+        
+        for app_name, config_path in self.CONFIG_FILES.items():
+            if not config_path.exists():
+                logger.warning(f"Config file missing for {app_name} at {config_path}")
+                validation_results[app_name] = {'in_sync': False, 'reason': 'missing'}
+                all_in_sync = False
+                continue
+                
+            config = self.load_existing_config(config_path)
+            if config is None:
+                logger.warning(f"Config file for {app_name} at {config_path} could not be parsed")
+                validation_results[app_name] = {'in_sync': False, 'reason': 'parse_error'}
+                all_in_sync = False
+                continue
+                
+            mcp_config = config.get('mcp', {})
+            
+            if mcp_config != reference_config:
+                logger.warning(f"Config mismatch detected for {app_name} at {config_path}")
+                validation_results[app_name] = {'in_sync': False, 'reason': 'mismatch'}
+                all_in_sync = False
+            else:
+                validation_results[app_name] = {'in_sync': True}
+                
+        if all_in_sync:
+            logger.info("All configuration files are in sync with the reference configuration")
+        
+        return all_in_sync, validation_results
+    
+    def print_report(self, sync_results, validation_results, source=None):
+        """Print a detailed report of the synchronization operation."""
+        # Determine overall status
+        all_success = all(result.get('success', False) for result in sync_results.values())
+        all_in_sync = all(result.get('in_sync', False) for result in validation_results.values())
+        
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        overall_status = "SUCCESS" if all_success and all_in_sync else "PARTIAL_SUCCESS" if all_success else "FAILED"
+        
+        # Count successful configurations
+        success_count = sum(1 for result in sync_results.values() if result.get('success', False))
+        total_count = len(sync_results)
+        
+        # Get server endpoint for reference
+        server_endpoint = self.config.get('server_endpoint', 'Unknown')
+        
+        # Print report header
+        print("\n" + "=" * 80)
+        print(f"MCP CONFIGURATION SYNCHRONIZATION REPORT - {timestamp}")
+        print("=" * 80)
+        print(f"Status: {overall_status}")
+        if source:
+            print(f"Source: {source}")
+        print(f"Apps Configured: {success_count}/{total_count}")
+        print(f"Server Endpoint: {server_endpoint}")
+        print("-" * 80)
+        print("DETAILS:")
+        
+        # Print details for each app
+        for app_name, result in sync_results.items():
+            success = result.get('success', False)
+            status_icon = "✓" if success else "✗"
+            
+            print(f"{status_icon} {app_name}:")
+            print(f"   Path: {result['path']}")
+            
+            if success:
+                print(f"   Action: {result['action']}")
+                print(f"   Size: {result['size']} bytes")
+                
+                # Add validation status if available
+                validation = validation_results.get(app_name, {})
+                if validation:
+                    in_sync = validation.get('in_sync', False)
+                    sync_icon = "✓" if in_sync else "✗"
+                    sync_status = "in_sync" if in_sync else f"out_of_sync ({validation.get('reason', 'unknown')})"
+                    print(f"   Validation: {sync_icon} {sync_status}")
+            else:
+                print(f"   Action: {result.get('action', 'failed')}")
+                print(f"   Error: {result.get('error', 'Unknown error')}")
+            
+            print()
+        
+        print("=" * 80)
+        return overall_status
     
     def sync_from_file(self, app_name_or_path):
-        """Loads MCP config from a specific file and syncs it to all other config files.
-        
-        Args:
-            app_name_or_path: Either an app name (key in CONFIG_FILES) or a direct path
-                             to a config file.
-        
-        Returns:
-            bool: True if synchronization was successful, False otherwise.
-        """
-        self.sync_results = {}
+        """Synchronize MCP configuration from a specified source file."""
+        # Determine source file path
         source_path = None
-        source_name = "Unknown"
+        source_name = None
         
-        # Determine the source file path
         if app_name_or_path in self.CONFIG_FILES:
-            source_path = self.CONFIG_FILES[app_name_or_path]
             source_name = app_name_or_path
+            source_path = self.CONFIG_FILES[app_name_or_path]
         else:
-            try:
-                source_path = Path(app_name_or_path)
-                source_name = f"Custom ({source_path})"
-            except:
-                logger.error(f"Invalid source: {app_name_or_path}")
-                return False
+            # Treat as direct file path
+            source_path = Path(app_name_or_path)
+            source_name = str(source_path)
         
-        # Check if source file exists
         if not source_path.exists():
             logger.error(f"Source file does not exist: {source_path}")
             return False
         
-        try:
-            # Load the source config
-            source_config = self.load_existing_config(source_path)
-            mcp_config = source_config.get('mcp', {})
-            
-            if not mcp_config:
-                logger.error(f"No MCP configuration found in {source_path}")
-                return False
-            
-            logger.info(f"Loaded reference MCP configuration from {source_name}")
-            
-            # Set as our reference and update all configs
-            self.config = mcp_config
-            
-            # Update all configs (including the source, which should remain unchanged)
-            self.update_configs()
-            
-            # Validate all configs
-            is_valid = self.validate_configs()
-            
-            # Generate and print report
-            report = self.generate_report()
-            # Add source info to report
-            report['source'] = source_name
-            self.print_report(report)
-            
-            return is_valid
-            
-        except Exception as e:
-            logger.error(f"Failed to sync from {source_path}: {e}")
+        # Load configuration from source
+        source_config = self.load_existing_config(source_path)
+        if source_config is None:
+            logger.error(f"Failed to parse source configuration at {source_path}")
             return False
-    
-    def validate_configs(self, reference_config=None):
-        """Validate that all configuration files are in sync and properly formatted.
         
-        Args:
-            reference_config: Optional reference configuration to use for validation.
-                             If None, uses the current in-memory config.
-        """
-        validation_results = {}
+        mcp_config = source_config.get('mcp')
+        if not mcp_config:
+            logger.error(f"No MCP configuration found in {source_path}")
+            return False
         
-        # Use the in-memory config as the reference if not explicitly provided
-        if reference_config is None:
-            reference_config = self.config
+        logger.info(f"Loaded reference MCP configuration from {source_name}")
         
-        for app_name, config_path in self.CONFIG_FILES.items():
-            if not config_path.exists():
-                validation_results[app_name] = {'status': 'missing'}
-                logger.warning(f"Config file missing for {app_name} at {config_path}")
-                continue
-                
-            config = self.load_existing_config(config_path)
-            mcp_config = config.get('mcp', {})
-            
-            if mcp_config == reference_config:
-                validation_results[app_name] = {'status': 'in_sync'}
-            else:
-                validation_results[app_name] = {'status': 'out_of_sync'}
-                logger.warning(f"Config mismatch detected for {app_name} at {config_path}")
+        # Update config with the loaded MCP configuration
+        self.config = mcp_config
         
-        # Update sync results with validation information
-        for app_name, result in validation_results.items():
-            if app_name in self.sync_results:
-                self.sync_results[app_name]['validation'] = result['status']
+        # Apply to all configs
+        sync_results = self.update_configs()
         
-        all_in_sync = all(r['status'] == 'in_sync' for r in validation_results.values())
+        # Validate configs
+        all_in_sync, validation_results = self.validate_configs()
         
-        if all_in_sync:
-            logger.info("All configuration files are in sync with the reference configuration")
+        # Generate report
+        status = self.print_report(sync_results, validation_results, source=source_name)
         
-        return all_in_sync
-    
-    def generate_report(self):
-        """Generate a detailed report of the synchronization results."""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        report = {
-            'timestamp': timestamp,
-            'overall_status': 'success' if all(r.get('status') == 'success' for r in self.sync_results.values()) else 'partial_failure',
-            'apps_configured': len([r for r in self.sync_results.values() if r.get('status') == 'success']),
-            'total_apps': len(self.CONFIG_FILES),
-            'server_endpoint': self.config.get('server_endpoint'),
-            'results': self.sync_results
-        }
-        
-        return report
-    
-    def print_report(self, report):
-        """Print a formatted report to the console."""
-        print("\n" + "="*80)
-        print(f"MCP CONFIGURATION SYNCHRONIZATION REPORT - {report['timestamp']}")
-        print("="*80)
-        print(f"Status: {report['overall_status'].upper()}")
-        
-        # Print source if available
-        if 'source' in report:
-            print(f"Source: {report['source']}")
-            
-        print(f"Apps Configured: {report['apps_configured']}/{report['total_apps']}")
-        print(f"Server Endpoint: {report['server_endpoint']}")
-        print("-"*80)
-        print("DETAILS:")
-        
-        for app_name, result in report['results'].items():
-            status_symbol = "✓" if result.get('status') == 'success' else "✗"
-            print(f"{status_symbol} {app_name}:")
-            print(f"   Path: {result.get('path')}")
-            
-            if result.get('status') == 'success':
-                print(f"   Action: {result.get('action')}")
-                print(f"   Size: {result.get('size')} bytes")
-                validation = result.get('validation', 'unknown')
-                validation_symbol = "✓" if validation == 'in_sync' else "✗"
-                print(f"   Validation: {validation_symbol} {validation}")
-            else:
-                print(f"   Error: {result.get('error')}")
-                
-            print()
-            
-        print("="*80)
+        if status == "SUCCESS":
+            logger.info(f"MCP configuration synchronization from source completed successfully")
+            return True
+        else:
+            logger.error(f"MCP configuration synchronization from source completed with issues")
+            return False
 
 def main():
     """Main function to synchronize MCP configurations."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Synchronize MCP configuration across multiple applications')
-    parser.add_argument('--source', help='Source app name or config file path to sync from')
+    parser = argparse.ArgumentParser(description="Synchronize MCP configuration across multiple applications")
+    parser.add_argument('--source', type=str, help="Source app or file path to sync from")
     args = parser.parse_args()
     
     synchronizer = MCPConfigSynchronizer()
     
     if args.source:
-        # Sync from the specified source
-        if synchronizer.sync_from_file(args.source):
-            logger.info("MCP configuration synchronization from source completed successfully")
+        # Sync from specified source
+        success = synchronizer.sync_from_file(args.source)
+        if success:
+            logger.info("MCP configuration synchronization completed successfully")
+            sys.exit(0)
         else:
-            logger.error("MCP configuration synchronization from source failed")
+            logger.error("MCP configuration synchronization failed")
+            sys.exit(1)
     else:
-        # Default behavior - update with custom config
+        # Use default config with custom overrides
         custom_config = {
             'server_endpoint': 'https://mcp.example.com:8443/mcp',
             'auth': {
@@ -307,19 +316,20 @@ def main():
         }
         
         # Update configurations
-        synchronizer.update_configs(custom_config)
+        sync_results = synchronizer.update_configs(custom_config)
         
         # Validate configurations
-        sync_successful = synchronizer.validate_configs()
+        all_in_sync, validation_results = synchronizer.validate_configs()
         
-        # Generate and print detailed report
-        report = synchronizer.generate_report()
-        synchronizer.print_report(report)
+        # Print report
+        status = synchronizer.print_report(sync_results, validation_results)
         
-        if sync_successful:
+        if status == "SUCCESS":
             logger.info("MCP configuration synchronization completed successfully")
+            sys.exit(0)
         else:
             logger.error("MCP configuration synchronization failed due to mismatches")
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()
