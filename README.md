@@ -1,79 +1,175 @@
 # MCP Config Synchronizer
 
-A utility to synchronize Model Context Protocol (MCP) configurations across multiple applications.
+A powerful utility to synchronize Model Context Protocol (MCP) configurations across multiple applications with real-time automatic syncing capabilities.
 
-## Overview
+## 🚀 Features
 
-This tool ensures that MCP configurations are consistent across different applications that support the Model Context Protocol, such as:
+- **Multi-Format Support**: Handles different MCP configuration formats across applications
+- **Real-Time Sync**: Automatic file watching with instant synchronization
+- **Format Detection**: Automatically detects and converts between configuration formats
+- **Conflict Resolution**: Intelligent handling of simultaneous changes with debouncing
+- **Comprehensive Coverage**: Supports 6+ applications with different MCP implementations
+- **Preservation**: Maintains application-specific settings while syncing MCP configs
 
-- Cursor
-- Codeium Windsurf
-- Roocode (VSCode and Windsurf versions)
-- Claude Desktop
+## 📱 Supported Applications
 
-The tool supports:
+| Application | Configuration Format | File Location |
+|-------------|---------------------|---------------|
+| **Claude Desktop** | `mcpServers` | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| **VSCode** | `mcp.servers` | `~/Library/Application Support/Code/User/settings.json` |
+| **Cursor** | `mcp.*` | `~/.cursor/mcp.json` |
+| **Windsurf** | `mcp.*` | `~/.codeium/windsurf/mcp_config.json` |
+| **Roocode (VSCode)** | `mcp.*` | `~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json` |
+| **Roocode (Windsurf)** | `mcp.*` | `~/Library/Application Support/Windsurf - Next/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json` |
 
-- Updating all configurations with a standard config
-- Reading a configuration from one app and applying it to all others
-- Validating that all configurations are in sync
-- Detailed reporting of sync operations
+## 🔧 Installation
 
-## Usage
+1. Clone the repository:
+```bash
+git clone https://github.com/benleibowitz/mcp-config-sync.git
+cd mcp-config-sync
+```
 
-### Basic Usage
+2. Install dependencies:
+```bash
+pip3 install -r requirements.txt
+```
+
+## 📖 Usage
+
+### One-Time Synchronization
 
 Apply the default configuration to all applications:
-
 ```bash
-python mcp_config_sync.py
+python3 mcp_config_sync.py
 ```
 
-### Sync from an Existing Config
-
-To use one application's config as the source of truth:
-
+Sync from an existing application config:
 ```bash
-python mcp_config_sync.py --source Cursor
+python3 mcp_config_sync.py --source Claude
+python3 mcp_config_sync.py --source VSCode
+python3 mcp_config_sync.py --source Cursor
 ```
 
-Supported source names:
-- Cursor
-- Windsurf
-- Roocode-VSCode
-- Roocode-Windsurf
-- Claude
+### 🤖 Automatic Real-Time Sync
 
-You can also specify a custom file path:
-
+**Continuous daemon mode** (watches all apps):
 ```bash
-python mcp_config_sync.py --source /path/to/your/config.json
+python3 mcp_config_sync.py --daemon
 ```
 
-## Configuration
+**Watch specific applications**:
+```bash
+python3 mcp_config_sync.py --daemon --watch Claude,VSCode,Cursor
+```
 
-The script looks for MCP configuration files in these default locations:
+**One-time watch with timeout**:
+```bash
+python3 mcp_config_sync.py --watch-once --timeout 30
+```
 
-- Cursor: `~/.cursor/mcp.json`
-- Windsurf: `~/.codeium/windsurf/mcp_config.json`
-- Roocode-VSCode: `~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json`
-- Roocode-Windsurf: `~/Library/Application Support/Windsurf - Next/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json`
-- Claude: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Custom debounce delay** (prevents rapid successive syncs):
+```bash
+python3 mcp_config_sync.py --daemon --debounce 5.0
+```
 
-## How It Works
+### Advanced Options
 
-The tool:
+```bash
+# Custom file path as source
+python3 mcp_config_sync.py --source /path/to/custom/config.json
 
-1. Loads configurations from each application
-2. Preserves application-specific settings
-3. Updates the MCP section in each config file
-4. Validates that all configs are in sync
-5. Generates a detailed report
+# View available applications
+python3 mcp_config_sync.py --help
+```
 
-## Requirements
+## 🏗️ How It Works
 
-- Python 3.6+
-- No external dependencies
+### Configuration Format Handling
 
-## License
+The tool intelligently detects and converts between different MCP configuration formats:
 
-MIT 
+1. **Claude Desktop Format**:
+   ```json
+   {
+     "mcpServers": {
+       "server-name": { "command": "...", "args": [...] }
+     }
+   }
+   ```
+
+2. **VSCode Format**:
+   ```json
+   {
+     "other-settings": "...",
+     "mcp": {
+       "inputs": [],
+       "servers": {
+         "server-name": { "command": "...", "args": [...] }
+       }
+     }
+   }
+   ```
+
+3. **Standard MCP Format**:
+   ```json
+   {
+     "mcp": {
+       "server_endpoint": "...",
+       "servers": { ... }
+     }
+   }
+   ```
+
+### Automatic Sync Process
+
+1. **File Monitoring**: Watches configuration file directories
+2. **Change Detection**: Identifies which application's config changed
+3. **Format Recognition**: Determines source configuration format
+4. **Debounced Sync**: Waits for edits to complete (2-second default)
+5. **Cross-Format Conversion**: Converts to each app's expected format
+6. **Conflict Avoidance**: Prevents sync loops from self-triggered changes
+
+## 🛠️ Improvements from Original Fork
+
+This fork includes significant enhancements over the original:
+
+### 🔥 Major New Features
+- **Real-time file watching** with automatic synchronization
+- **VSCode settings.json support** with format detection
+- **Multi-format configuration handling** (4 different formats)
+- **Intelligent conflict resolution** and debouncing
+- **Daemon mode** for continuous monitoring
+
+### 🧠 Enhanced Architecture
+- **Format-specific handlers** for clean separation of concerns
+- **Automatic format detection** and normalization
+- **Extensible design** for easy addition of new applications
+- **Robust error handling** and logging
+
+### 🎯 Better User Experience
+- **Comprehensive CLI options** for different use cases
+- **Detailed reporting** with format information
+- **Settings preservation** (no more overwriting app-specific configs)
+- **Cross-platform compatibility** improvements
+
+### 🔒 Reliability Improvements
+- **Graceful error handling** for missing/corrupted files
+- **Signal handling** for clean daemon shutdown
+- **Thread-safe operations** for concurrent file access
+- **Validation enhancements** for format-aware comparison
+
+## 📋 Requirements
+
+- **Python 3.7+**
+- Dependencies listed in `requirements.txt`
+- **macOS/Linux/Windows** (cross-platform)
+
+## 🚦 Exit Codes
+
+- `0`: Success
+- `1`: Synchronization failed or validation errors
+
+## 📄 License
+
+MIT License

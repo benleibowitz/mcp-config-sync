@@ -5,10 +5,306 @@ import logging
 from datetime import datetime
 import argparse
 import sys
+import time
+import signal
+import threading
+from abc import ABC, abstractmethod
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+class ConfigFormatHandler(ABC):
+    """Abstract base class for handling different MCP configuration formats."""
+    
+    @abstractmethod
+    def detect_format(self, config_data: dict) -> bool:
+        """Detect if this handler can process the given configuration format."""
+        pass
+    
+    @abstractmethod
+    def extract_mcp_config(self, config_data: dict) -> dict:
+        """Extract MCP configuration from the app-specific format."""
+        pass
+    
+    @abstractmethod
+    def merge_mcp_config(self, existing_config: dict, mcp_config: dict) -> dict:
+        """Merge MCP configuration back into the app-specific format."""
+        pass
+    
+    @abstractmethod
+    def get_format_name(self) -> str:
+        """Get the name of this configuration format."""
+        pass
+
+class ClaudeDesktopHandler(ConfigFormatHandler):
+    """Handler for Claude Desktop's mcpServers configuration format."""
+    
+    def detect_format(self, config_data: dict) -> bool:
+        return 'mcpServers' in config_data
+    
+    def extract_mcp_config(self, config_data: dict) -> dict:
+        """Convert Claude Desktop's mcpServers to normalized MCP config."""
+        mcp_servers = config_data.get('mcpServers', {})
+        
+        # Create a normalized representation
+        normalized_config = {
+            'format': 'claude_desktop',
+            'servers': mcp_servers
+        }
+        
+        return normalized_config
+    
+    def merge_mcp_config(self, existing_config: dict, mcp_config: dict) -> dict:
+        """Merge MCP config back into Claude Desktop format."""
+        updated_config = existing_config.copy()
+        
+        # If the MCP config is in normalized format, extract servers
+        if isinstance(mcp_config, dict) and 'servers' in mcp_config:
+            updated_config['mcpServers'] = mcp_config['servers']
+        elif isinstance(mcp_config, dict) and 'mcpServers' in mcp_config:
+            updated_config['mcpServers'] = mcp_config['mcpServers']
+        else:
+            # Handle legacy format by wrapping in mcpServers
+            updated_config['mcpServers'] = mcp_config
+        
+        return updated_config
+    
+    def get_format_name(self) -> str:
+        return "Claude Desktop (mcpServers)"
+
+class StandardMCPHandler(ConfigFormatHandler):
+    """Handler for the standard MCP configuration format used by other apps."""
+    
+    def detect_format(self, config_data: dict) -> bool:
+        return 'mcp' in config_data
+    
+    def extract_mcp_config(self, config_data: dict) -> dict:
+        """Extract MCP configuration from standard format."""
+        return config_data.get('mcp', {})
+    
+    def merge_mcp_config(self, existing_config: dict, mcp_config: dict) -> dict:
+        """Merge MCP configuration into standard format."""
+        updated_config = existing_config.copy()
+        updated_config['mcp'] = mcp_config
+        return updated_config
+    
+    def get_format_name(self) -> str:
+        return "Standard MCP"
+
+class VSCodeHandler(ConfigFormatHandler):
+    """Handler for VSCode's settings.json mcp.servers configuration format."""
+    
+    def detect_format(self, config_data: dict) -> bool:
+        return 'mcp' in config_data and isinstance(config_data['mcp'], dict) and 'servers' in config_data['mcp']
+    
+    def extract_mcp_config(self, config_data: dict) -> dict:
+        """Extract MCP configuration from VSCode settings format."""
+        mcp_section = config_data.get('mcp', {})
+        servers = mcp_section.get('servers', {})
+        
+        # Create a normalized representation similar to Claude Desktop
+        normalized_config = {
+            'format': 'vscode',
+            'servers': servers,
+            'inputs': mcp_section.get('inputs', [])
+        }
+        
+        return normalized_config
+    
+    def merge_mcp_config(self, existing_config: dict, mcp_config: dict) -> dict:
+        """Merge MCP config back into VSCode settings format."""
+        updated_config = existing_config.copy()
+        
+        # Initialize mcp section if it doesn't exist
+        if 'mcp' not in updated_config:
+            updated_config['mcp'] = {}
+        
+        # Handle different input formats
+        if isinstance(mcp_config, dict) and 'servers' in mcp_config:
+            # Normalized format from VSCode or Claude Desktop
+            updated_config['mcp']['servers'] = mcp_config['servers']
+            if 'inputs' in mcp_config:
+                updated_config['mcp']['inputs'] = mcp_config['inputs']
+        elif isinstance(mcp_config, dict) and 'mcpServers' in mcp_config:
+            # Claude Desktop format
+            updated_config['mcp']['servers'] = mcp_config['mcpServers']
+        else:
+            # Legacy format - wrap servers in VSCode structure
+            updated_config['mcp']['servers'] = mcp_config
+            
+        # Ensure inputs exists
+        if 'inputs' not in updated_config['mcp']:
+            updated_config['mcp']['inputs'] = []
+        
+        return updated_config
+    
+    def get_format_name(self) -> str:
+        return "VSCode (mcp.servers)"
+
+class LegacyMCPHandler(ConfigFormatHandler):
+    """Handler for legacy/empty configurations that need to be initialized."""
+    
+    def detect_format(self, config_data: dict) -> bool:
+        # This handler accepts any config that doesn't match other formats
+        return True
+    
+    def extract_mcp_config(self, config_data: dict) -> dict:
+        """Return empty MCP config for legacy/empty configurations."""
+        return {}
+    
+    def merge_mcp_config(self, existing_config: dict, mcp_config: dict) -> dict:
+        """Merge MCP configuration using standard format."""
+        updated_config = existing_config.copy()
+        updated_config['mcp'] = mcp_config
+        return updated_config
+    
+    def get_format_name(self) -> str:
+        return "Legacy/Empty"
+
+class MCPConfigWatcher(FileSystemEventHandler):
+    """File system event handler for watching MCP configuration changes."""
+    
+    def __init__(self, synchronizer, debounce_delay=2.0):
+        super().__init__()
+        self.synchronizer = synchronizer
+        self.debounce_delay = debounce_delay
+        self.pending_syncs = {}
+        self.lock = threading.Lock()
+        
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+            
+        file_path = Path(event.src_path)
+        
+        # Check if this is one of our monitored config files
+        source_app = None
+        for app_name, config_path in self.synchronizer.CONFIG_FILES.items():
+            try:
+                if file_path.exists() and config_path.exists() and file_path.samefile(config_path):
+                    source_app = app_name
+                    break
+            except (OSError, FileNotFoundError):
+                # File might have been deleted or moved, skip
+                continue
+        
+        if source_app:
+            # Check if this change was caused by our own sync operation
+            if self._is_sync_in_progress(source_app):
+                logger.debug(f"Ignoring self-triggered change in {source_app} config")
+                return
+                
+            logger.info(f"Detected external change in {source_app} config: {file_path}")
+            self._schedule_sync(source_app, file_path)
+    
+    def _is_sync_in_progress(self, app_name):
+        """Check if a sync operation is currently in progress for this app."""
+        # Simple check - if there's a pending sync, assume we might be in the middle of it
+        with self.lock:
+            return app_name in self.pending_syncs
+    
+    def _schedule_sync(self, source_app, file_path):
+        """Schedule a sync with debouncing to avoid rapid successive syncs."""
+        with self.lock:
+            # Cancel any existing timer for this app
+            if source_app in self.pending_syncs:
+                self.pending_syncs[source_app].cancel()
+            
+            # Schedule new sync
+            timer = threading.Timer(
+                self.debounce_delay, 
+                self._execute_sync, 
+                args=(source_app, file_path)
+            )
+            timer.start()
+            self.pending_syncs[source_app] = timer
+    
+    def _execute_sync(self, source_app, file_path):
+        """Execute the actual sync operation."""
+        try:
+            logger.info(f"Starting automatic sync from {source_app}")
+            success = self.synchronizer.sync_from_file(source_app)
+            
+            if success:
+                logger.info(f"Automatic sync from {source_app} completed successfully")
+            else:
+                logger.error(f"Automatic sync from {source_app} failed")
+                
+        except Exception as e:
+            logger.error(f"Error during automatic sync from {source_app}: {e}")
+        finally:
+            # Clean up the timer reference
+            with self.lock:
+                self.pending_syncs.pop(source_app, None)
+
+class MCPSyncDaemon:
+    """Daemon for running continuous MCP configuration synchronization."""
+    
+    def __init__(self, synchronizer, watch_apps=None, debounce_delay=2.0):
+        self.synchronizer = synchronizer
+        self.watch_apps = watch_apps or list(synchronizer.CONFIG_FILES.keys())
+        self.debounce_delay = debounce_delay
+        self.observer = Observer()
+        self.event_handler = MCPConfigWatcher(synchronizer, debounce_delay)
+        self.running = False
+        
+    def start(self):
+        """Start the file watching daemon."""
+        logger.info("Starting MCP Config Sync Daemon")
+        logger.info(f"Watching apps: {', '.join(self.watch_apps)}")
+        logger.info(f"Debounce delay: {self.debounce_delay}s")
+        
+        # Setup file watchers for each monitored app
+        watched_paths = set()
+        for app_name in self.watch_apps:
+            if app_name in self.synchronizer.CONFIG_FILES:
+                config_path = self.synchronizer.CONFIG_FILES[app_name]
+                
+                # Watch the parent directory since the file might not exist yet
+                watch_dir = config_path.parent
+                if watch_dir not in watched_paths:
+                    self.observer.schedule(
+                        self.event_handler, 
+                        str(watch_dir), 
+                        recursive=False
+                    )
+                    watched_paths.add(watch_dir)
+                    logger.info(f"Watching directory: {watch_dir}")
+        
+        # Start the observer
+        self.observer.start()
+        self.running = True
+        
+        # Setup signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        
+        logger.info("Daemon started. Press Ctrl+C to stop.")
+        
+        try:
+            while self.running:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.stop()
+    
+    def stop(self):
+        """Stop the file watching daemon."""
+        if self.running:
+            logger.info("Stopping MCP Config Sync Daemon")
+            self.running = False
+            self.observer.stop()
+            self.observer.join()
+            logger.info("Daemon stopped")
+    
+    def _signal_handler(self, signum, frame):
+        """Handle shutdown signals."""
+        logger.info(f"Received signal {signum}, shutting down...")
+        self.running = False
 
 class MCPConfigSynchronizer:
     """Synchronizes MCP configuration across multiple application config files."""
@@ -20,7 +316,26 @@ class MCPConfigSynchronizer:
                   'globalStorage' / 'rooveterinaryinc.roo-cline' / 'settings' / 'cline_mcp_settings.json',
         'Roocode-Windsurf': Path.home() / 'Library' / 'Application Support' / 'Windsurf - Next' / 'User' /
                   'globalStorage' / 'rooveterinaryinc.roo-cline' / 'settings' / 'mcp_settings.json',
-        'Claude': Path.home() / 'Library' / 'Application Support' / 'Claude' / 'claude_desktop_config.json'
+        'Claude': Path.home() / 'Library' / 'Application Support' / 'Claude' / 'claude_desktop_config.json',
+        'VSCode': Path.home() / 'Library' / 'Application Support' / 'Code' / 'User' / 'settings.json'
+    }
+    
+    # Configuration format handlers (order matters - most specific first)
+    FORMAT_HANDLERS = [
+        ClaudeDesktopHandler(),
+        VSCodeHandler(),
+        StandardMCPHandler(),
+        LegacyMCPHandler()  # Fallback handler
+    ]
+    
+    # Map applications to their preferred handlers
+    APP_HANDLERS = {
+        'Claude': ClaudeDesktopHandler(),
+        'VSCode': VSCodeHandler(),
+        'Cursor': StandardMCPHandler(),
+        'Windsurf': StandardMCPHandler(),
+        'Roocode-VSCode': StandardMCPHandler(),
+        'Roocode-Windsurf': StandardMCPHandler()
     }
     
     DEFAULT_MCP_CONFIG = {
@@ -52,6 +367,18 @@ class MCPConfigSynchronizer:
     def __init__(self):
         self.config = self.DEFAULT_MCP_CONFIG.copy()
         self.sync_results = {}
+    
+    def detect_config_format(self, config_data: dict) -> ConfigFormatHandler:
+        """Detect the appropriate format handler for the given configuration."""
+        for handler in self.FORMAT_HANDLERS:
+            if handler.detect_format(config_data):
+                return handler
+        # Should never reach here due to LegacyMCPHandler fallback
+        return LegacyMCPHandler()
+    
+    def get_app_handler(self, app_name: str) -> ConfigFormatHandler:
+        """Get the appropriate format handler for a specific application."""
+        return self.APP_HANDLERS.get(app_name, StandardMCPHandler())
     
     def ensure_directories(self):
         """Ensure all parent directories for config files exist."""
@@ -113,8 +440,11 @@ class MCPConfigSynchronizer:
                 # Get file status before update
                 file_existed = config_path.exists()
                 
-                # Merge with new MCP config
-                updated_config = self.merge_configs(existing_config, {'mcp': self.config})
+                # Get the appropriate handler for this app
+                handler = self.get_app_handler(app_name)
+                
+                # Merge with new MCP config using format-specific handler
+                updated_config = handler.merge_mcp_config(existing_config, self.config)
                 
                 # Write updated config
                 with open(config_path, 'w') as f:
@@ -122,12 +452,13 @@ class MCPConfigSynchronizer:
                 
                 # Record result
                 action = 'updated' if file_existed else 'created'
-                logger.info(f"Successfully {action} config for {app_name} at {config_path}")
+                logger.info(f"Successfully {action} config for {app_name} at {config_path} using {handler.get_format_name()} format")
                 results[app_name] = {
                     'success': True, 
                     'path': config_path,
                     'action': action,
-                    'size': config_path.stat().st_size
+                    'size': config_path.stat().st_size,
+                    'format': handler.get_format_name()
                 }
                 
             except Exception as e:
@@ -162,41 +493,65 @@ class MCPConfigSynchronizer:
                 validation_results[app_name] = {'in_sync': False, 'reason': 'parse_error'}
                 all_in_sync = False
                 continue
+            
+            # Use format-specific handler to extract MCP config for comparison
+            handler = self.detect_config_format(config)
+            mcp_config = handler.extract_mcp_config(config)
+            
+            # For Claude Desktop format, we need to compare the servers structure
+            if isinstance(handler, ClaudeDesktopHandler):
+                # Extract servers from both configurations for comparison
+                ref_servers = reference_config.get('servers', {}) if isinstance(reference_config, dict) and 'servers' in reference_config else {}
+                app_servers = mcp_config.get('servers', {}) if isinstance(mcp_config, dict) and 'servers' in mcp_config else {}
                 
-            mcp_config = config.get('mcp', {})
-            
-            # Check if all fields in the reference config exist with the same values in the app config
-            # This allows app configs to have additional fields that aren't in the reference
-            is_in_sync = True
-            mismatched_keys = []
-            
-            def check_nested_dict(ref_dict, app_dict, path=""):
-                nonlocal is_in_sync, mismatched_keys
-                for key, ref_value in ref_dict.items():
-                    if key not in app_dict:
-                        is_in_sync = False
-                        mismatched_keys.append(f"{path}{key} (missing)")
-                        continue
-                        
-                    app_value = app_dict[key]
-                    if isinstance(ref_value, dict) and isinstance(app_value, dict):
-                        check_nested_dict(ref_value, app_value, f"{path}{key}.")
-                    elif ref_value != app_value:
-                        is_in_sync = False
-                        mismatched_keys.append(f"{path}{key} (value mismatch)")
-            
-            check_nested_dict(reference_config, mcp_config)
+                # If reference config is in legacy format, we can't do meaningful comparison
+                if not ref_servers and reference_config:
+                    logger.info(f"Skipping validation for {app_name} - reference config is in legacy format, app uses Claude Desktop format")
+                    validation_results[app_name] = {'in_sync': True, 'reason': 'format_mismatch_skip'}
+                    continue
+                
+                # Compare server configurations
+                is_in_sync = app_servers == ref_servers
+                if not is_in_sync:
+                    mismatched_keys = ['servers (content mismatch)']
+                else:
+                    mismatched_keys = []
+            else:
+                # Standard validation for other formats
+                is_in_sync = True
+                mismatched_keys = []
+                
+                def check_nested_dict(ref_dict, app_dict, path=""):
+                    nonlocal is_in_sync, mismatched_keys
+                    for key, ref_value in ref_dict.items():
+                        if key not in app_dict:
+                            is_in_sync = False
+                            mismatched_keys.append(f"{path}{key} (missing)")
+                            continue
+                            
+                        app_value = app_dict[key]
+                        if isinstance(ref_value, dict) and isinstance(app_value, dict):
+                            check_nested_dict(ref_value, app_value, f"{path}{key}.")
+                        elif ref_value != app_value:
+                            is_in_sync = False
+                            mismatched_keys.append(f"{path}{key} (value mismatch)")
+                
+                check_nested_dict(reference_config, mcp_config)
             
             if not is_in_sync:
                 logger.warning(f"Config mismatch detected for {app_name} at {config_path}")
                 validation_results[app_name] = {
                     'in_sync': False, 
                     'reason': 'mismatch',
-                    'mismatched_keys': mismatched_keys
+                    'mismatched_keys': mismatched_keys,
+                    'format': handler.get_format_name()
                 }
                 all_in_sync = False
             else:
-                validation_results[app_name] = {'in_sync': True}
+                validation_results[app_name] = {
+                    'in_sync': True,
+                    'format': handler.get_format_name()
+                }
                 
         if all_in_sync:
             logger.info("All configuration files are in sync with the reference configuration")
@@ -301,12 +656,15 @@ class MCPConfigSynchronizer:
             logger.error(f"Failed to parse source configuration at {source_path}")
             return False
         
-        mcp_config = source_config.get('mcp')
+        # Detect format and extract MCP configuration using appropriate handler
+        handler = self.detect_config_format(source_config)
+        mcp_config = handler.extract_mcp_config(source_config)
+        
         if not mcp_config:
             logger.error(f"No MCP configuration found in {source_path}")
             return False
         
-        logger.info(f"Loaded reference MCP configuration from {source_name}")
+        logger.info(f"Loaded reference MCP configuration from {source_name} using {handler.get_format_name()} format")
         
         # Update config with the loaded MCP configuration
         self.config = mcp_config
@@ -331,11 +689,57 @@ def main():
     """Main function to synchronize MCP configurations."""
     parser = argparse.ArgumentParser(description="Synchronize MCP configuration across multiple applications")
     parser.add_argument('--source', type=str, help="Source app or file path to sync from")
+    parser.add_argument('--daemon', action='store_true', help="Run in daemon mode to continuously watch for changes")
+    parser.add_argument('--watch', type=str, help="Comma-separated list of apps to watch (default: all)")
+    parser.add_argument('--debounce', type=float, default=2.0, help="Debounce delay in seconds (default: 2.0)")
+    parser.add_argument('--watch-once', action='store_true', help="Watch for changes once, then exit")
+    parser.add_argument('--timeout', type=int, help="Timeout in seconds for --watch-once mode")
     args = parser.parse_args()
     
     synchronizer = MCPConfigSynchronizer()
     
-    if args.source:
+    # Parse watch apps if specified
+    watch_apps = None
+    if args.watch:
+        watch_apps = [app.strip() for app in args.watch.split(',')]
+        # Validate app names
+        invalid_apps = [app for app in watch_apps if app not in synchronizer.CONFIG_FILES]
+        if invalid_apps:
+            logger.error(f"Invalid app names: {', '.join(invalid_apps)}")
+            logger.error(f"Valid apps: {', '.join(synchronizer.CONFIG_FILES.keys())}")
+            sys.exit(1)
+    
+    if args.daemon or args.watch_once:
+        # Run in daemon/watch mode
+        daemon = MCPSyncDaemon(synchronizer, watch_apps, args.debounce)
+        
+        if args.watch_once:
+            # Watch once with optional timeout
+            logger.info("Starting one-time watch mode")
+            if args.timeout:
+                logger.info(f"Will timeout after {args.timeout} seconds")
+            
+            try:
+                daemon.observer.start()
+                start_time = time.time()
+                
+                while True:
+                    time.sleep(0.1)
+                    if args.timeout and (time.time() - start_time) >= args.timeout:
+                        logger.info("Timeout reached, exiting watch mode")
+                        break
+            except KeyboardInterrupt:
+                logger.info("Watch mode interrupted by user")
+            finally:
+                daemon.observer.stop()
+                daemon.observer.join()
+        else:
+            # Run as continuous daemon
+            daemon.start()
+        
+        sys.exit(0)
+    
+    elif args.source:
         # Sync from specified source
         success = synchronizer.sync_from_file(args.source)
         if success:
