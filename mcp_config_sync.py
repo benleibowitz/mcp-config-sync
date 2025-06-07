@@ -339,29 +339,7 @@ class MCPConfigSynchronizer:
     }
     
     DEFAULT_MCP_CONFIG = {
-        'mcp_version': '1.0.0',
-        'server_endpoint': 'http://localhost:8000/mcp',
-        'auth': {
-            'enabled': True,
-            'method': 'jwt',
-            'secret_key': 'your-secret-key-here'
-        },
-        'context_sources': {
-            'vector_db': {
-                'enabled': True,
-                'type': 'pinecone',
-                'endpoint': 'http://localhost:6333'
-            },
-            'structured_db': {
-                'enabled': False,
-                'type': 'postgresql',
-                'connection_string': 'postgresql://user:password@localhost:5432/dbname'
-            }
-        },
-        'performance': {
-            'max_concurrent_requests': 100,
-            'cache_ttl': 3600
-        }
+        'servers': {}
     }
     
     def __init__(self):
@@ -413,12 +391,73 @@ class MCPConfigSynchronizer:
         
         return deep_merge(existing_config.copy(), new_config)
     
-    def update_configs(self, custom_config=None):
+    def check_destructive_operations(self):
+        """Check if the sync operation would remove existing MCP servers."""
+        destructive_apps = []
+        source_servers = self.config.get('servers', {})
+        
+        for app_name, config_path in self.CONFIG_FILES.items():
+            if not config_path.exists():
+                continue
+                
+            existing_config = self.load_existing_config(config_path)
+            if existing_config is None:
+                continue
+                
+            # Extract existing MCP servers
+            handler = self.detect_config_format(existing_config)
+            existing_mcp_config = handler.extract_mcp_config(existing_config)
+            existing_servers = existing_mcp_config.get('servers', {})
+            
+            # Check if we're removing servers
+            if existing_servers and len(existing_servers) > len(source_servers):
+                lost_servers = set(existing_servers.keys()) - set(source_servers.keys())
+                if lost_servers:
+                    destructive_apps.append({
+                        'app_name': app_name,
+                        'existing_servers': list(existing_servers.keys()),
+                        'lost_servers': list(lost_servers),
+                        'remaining_servers': list(source_servers.keys())
+                    })
+        
+        return destructive_apps
+    
+    def prompt_user_confirmation(self, destructive_apps):
+        """Prompt user for confirmation of destructive operations."""
+        print("\n⚠️  WARNING: Destructive Operation Detected ⚠️")
+        print("The following applications will lose MCP servers:")
+        print()
+        
+        for app_info in destructive_apps:
+            print(f"📱 {app_info['app_name']}:")
+            print(f"   Current servers: {', '.join(app_info['existing_servers']) if app_info['existing_servers'] else 'none'}")
+            print(f"   Servers to be removed: {', '.join(app_info['lost_servers'])}")
+            print(f"   Servers after sync: {', '.join(app_info['remaining_servers']) if app_info['remaining_servers'] else 'none'}")
+            print()
+        
+        while True:
+            response = input("Do you want to continue with this operation? (y/N): ").strip().lower()
+            if response in ['y', 'yes']:
+                return True
+            elif response in ['n', 'no', '']:
+                return False
+            else:
+                print("Please enter 'y' for yes or 'n' for no.")
+
+    def update_configs(self, custom_config=None, force=False):
         """Update all configuration files with the specified MCP configuration."""
         self.ensure_directories()
         
         if custom_config:
             self.config = self.merge_configs(self.config, custom_config)
+        
+        # Check for destructive operations
+        destructive_apps = self.check_destructive_operations()
+        if destructive_apps and not force:
+            if not self.prompt_user_confirmation(destructive_apps):
+                logger.info("Operation cancelled by user")
+                return {app_name: {'success': False, 'action': 'cancelled', 'reason': 'user_cancelled'} 
+                       for app_name in self.CONFIG_FILES.keys()}
         
         results = {}
         for app_name, config_path in self.CONFIG_FILES.items():
@@ -524,6 +563,10 @@ class MCPConfigSynchronizer:
                 def check_nested_dict(ref_dict, app_dict, path=""):
                     nonlocal is_in_sync, mismatched_keys
                     for key, ref_value in ref_dict.items():
+                        # Skip format field as it's metadata, not actual config data
+                        if key == 'format':
+                            continue
+                            
                         if key not in app_dict:
                             is_in_sync = False
                             mismatched_keys.append(f"{path}{key} (missing)")
@@ -592,7 +635,8 @@ class MCPConfigSynchronizer:
             status_icon = "✓" if success else "✗"
             
             print(f"{status_icon} {app_name}:")
-            print(f"   Path: {result['path']}")
+            if 'path' in result:
+                print(f"   Path: {result['path']}")
             
             if success:
                 print(f"   Action: {result['action']}")
@@ -624,15 +668,19 @@ class MCPConfigSynchronizer:
                     
                     print(f"   Validation: {sync_icon} {sync_status}")
             else:
-                print(f"   Action: {result.get('action', 'failed')}")
-                print(f"   Error: {result.get('error', 'Unknown error')}")
+                action = result.get('action', 'failed')
+                print(f"   Action: {action}")
+                if action == 'cancelled':
+                    print(f"   Reason: {result.get('reason', 'operation cancelled by user')}")
+                else:
+                    print(f"   Error: {result.get('error', 'Unknown error')}")
             
             print()
         
         print("=" * 80)
         return overall_status
     
-    def sync_from_file(self, app_name_or_path):
+    def sync_from_file(self, app_name_or_path, force=False):
         """Synchronize MCP configuration from a specified source file."""
         # Determine source file path
         source_path = None
@@ -670,7 +718,7 @@ class MCPConfigSynchronizer:
         self.config = mcp_config
         
         # Apply to all configs
-        sync_results = self.update_configs()
+        sync_results = self.update_configs(force=force)
         
         # Validate configs
         all_in_sync, validation_results = self.validate_configs()
@@ -694,6 +742,7 @@ def main():
     parser.add_argument('--debounce', type=float, default=2.0, help="Debounce delay in seconds (default: 2.0)")
     parser.add_argument('--watch-once', action='store_true', help="Watch for changes once, then exit")
     parser.add_argument('--timeout', type=int, help="Timeout in seconds for --watch-once mode")
+    parser.add_argument('--force', action='store_true', help="Skip confirmation for destructive operations")
     args = parser.parse_args()
     
     synchronizer = MCPConfigSynchronizer()
@@ -741,7 +790,7 @@ def main():
     
     elif args.source:
         # Sync from specified source
-        success = synchronizer.sync_from_file(args.source)
+        success = synchronizer.sync_from_file(args.source, force=args.force)
         if success:
             logger.info("MCP configuration synchronization completed successfully")
             sys.exit(0)
@@ -749,22 +798,8 @@ def main():
             logger.error("MCP configuration synchronization failed")
             sys.exit(1)
     else:
-        # Use default config with custom overrides
-        custom_config = {
-            'server_endpoint': 'https://mcp.example.com:8443/mcp',
-            'auth': {
-                'secret_key': 'new-secret-key-12345'
-            },
-            'context_sources': {
-                'vector_db': {
-                    'type': 'weaviate',
-                    'endpoint': 'http://weaviate:8080'
-                }
-            }
-        }
-        
-        # Update configurations
-        sync_results = synchronizer.update_configs(custom_config)
+        # Use default config
+        sync_results = synchronizer.update_configs(force=args.force)
         
         # Validate configurations
         all_in_sync, validation_results = synchronizer.validate_configs()

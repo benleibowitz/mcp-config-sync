@@ -10,6 +10,7 @@ A powerful utility to synchronize Model Context Protocol (MCP) configurations ac
 - **Conflict Resolution**: Intelligent handling of simultaneous changes with debouncing
 - **Comprehensive Coverage**: Supports 6+ applications with different MCP implementations
 - **Preservation**: Maintains application-specific settings while syncing MCP configs
+- **🛡️ Safety Protection**: Prevents accidental loss of MCP servers with confirmation prompts
 
 ## 📱 Supported Applications
 
@@ -30,10 +31,14 @@ git clone https://github.com/benleibowitz/mcp-config-sync.git
 cd mcp-config-sync
 ```
 
-2. Install dependencies:
+2. Setup virtual environment and install dependencies:
 ```bash
-pip3 install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
+
+> **Note**: Virtual environment is required on macOS due to externally-managed-environment restrictions.
 
 ## 📖 Usage
 
@@ -41,46 +46,57 @@ pip3 install -r requirements.txt
 
 Apply the default configuration to all applications:
 ```bash
-python3 mcp_config_sync.py
+source venv/bin/activate && python3 mcp_config_sync.py
 ```
 
 Sync from an existing application config:
 ```bash
-python3 mcp_config_sync.py --source Claude
-python3 mcp_config_sync.py --source VSCode
-python3 mcp_config_sync.py --source Cursor
+source venv/bin/activate && python3 mcp_config_sync.py --source Claude
+source venv/bin/activate && python3 mcp_config_sync.py --source VSCode
+source venv/bin/activate && python3 mcp_config_sync.py --source Cursor
 ```
 
 ### 🤖 Automatic Real-Time Sync
 
 **Continuous daemon mode** (watches all apps):
 ```bash
-python3 mcp_config_sync.py --daemon
+source venv/bin/activate && python3 mcp_config_sync.py --daemon
 ```
 
 **Watch specific applications**:
 ```bash
-python3 mcp_config_sync.py --daemon --watch Claude,VSCode,Cursor
+source venv/bin/activate && python3 mcp_config_sync.py --daemon --watch Claude,VSCode,Cursor
 ```
 
 **One-time watch with timeout**:
 ```bash
-python3 mcp_config_sync.py --watch-once --timeout 30
+source venv/bin/activate && python3 mcp_config_sync.py --watch-once --timeout 30
 ```
 
 **Custom debounce delay** (prevents rapid successive syncs):
 ```bash
-python3 mcp_config_sync.py --daemon --debounce 5.0
+source venv/bin/activate && python3 mcp_config_sync.py --daemon --debounce 5.0
+```
+
+### 🛡️ Safety Features
+
+**Destructive operation protection** - warns when sync would remove existing MCP servers:
+```bash
+# Interactive confirmation (default behavior)
+source venv/bin/activate && python3 mcp_config_sync.py --source empty_config.json
+
+# Skip confirmation for automation
+source venv/bin/activate && python3 mcp_config_sync.py --source empty_config.json --force
 ```
 
 ### Advanced Options
 
 ```bash
 # Custom file path as source
-python3 mcp_config_sync.py --source /path/to/custom/config.json
+source venv/bin/activate && python3 mcp_config_sync.py --source /path/to/custom/config.json
 
 # View available applications
-python3 mcp_config_sync.py --help
+source venv/bin/activate && python3 mcp_config_sync.py --help
 ```
 
 ## 🏗️ How It Works
@@ -158,6 +174,7 @@ This fork includes significant enhancements over the original:
 - **Signal handling** for clean daemon shutdown
 - **Thread-safe operations** for concurrent file access
 - **Validation enhancements** for format-aware comparison
+- **🛡️ Destructive operation protection** with user confirmation prompts
 
 ## 📋 Requirements
 
