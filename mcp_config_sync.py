@@ -11,10 +11,20 @@ import threading
 from abc import ABC, abstractmethod
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Confirm
+from rich import box
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Configure Rich console
+console = Console()
 
 class ConfigFormatHandler(ABC):
     """Abstract base class for handling different MCP configuration formats."""
@@ -424,25 +434,46 @@ class MCPConfigSynchronizer:
     
     def prompt_user_confirmation(self, destructive_apps):
         """Prompt user for confirmation of destructive operations."""
-        print("\n⚠️  WARNING: Destructive Operation Detected ⚠️")
-        print("The following applications will lose MCP servers:")
-        print()
+        console.print()
+        
+        # Create a table for destructive operations
+        table = Table(
+            title="⚠️  Destructive Operation Detected",
+            box=box.ROUNDED,
+            title_style="bold red",
+            show_header=True,
+            header_style="bold magenta"
+        )
+        table.add_column("Application", style="cyan", no_wrap=True)
+        table.add_column("Current Servers", style="green")
+        table.add_column("Servers to Remove", style="red")
+        table.add_column("Remaining Servers", style="yellow")
         
         for app_info in destructive_apps:
-            print(f"📱 {app_info['app_name']}:")
-            print(f"   Current servers: {', '.join(app_info['existing_servers']) if app_info['existing_servers'] else 'none'}")
-            print(f"   Servers to be removed: {', '.join(app_info['lost_servers'])}")
-            print(f"   Servers after sync: {', '.join(app_info['remaining_servers']) if app_info['remaining_servers'] else 'none'}")
-            print()
+            current = ', '.join(app_info['existing_servers']) if app_info['existing_servers'] else 'none'
+            removed = ', '.join(app_info['lost_servers']) if app_info['lost_servers'] else 'none'
+            remaining = ', '.join(app_info['remaining_servers']) if app_info['remaining_servers'] else 'none'
+            
+            table.add_row(
+                f"📱 {app_info['app_name']}", 
+                current, 
+                removed, 
+                remaining
+            )
         
-        while True:
-            response = input("Do you want to continue with this operation? (y/N): ").strip().lower()
-            if response in ['y', 'yes']:
-                return True
-            elif response in ['n', 'no', '']:
-                return False
-            else:
-                print("Please enter 'y' for yes or 'n' for no.")
+        console.print(table)
+        console.print()
+        
+        # Use rich Confirm for confirmation
+        try:
+            return Confirm.ask(
+                "Do you want to continue with this destructive operation?",
+                default=False,
+                console=console
+            )
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[red]Operation cancelled by user[/red]")
+            return False
 
     def update_configs(self, custom_config=None, force=False):
         """Update all configuration files with the specified MCP configuration."""
@@ -614,70 +645,99 @@ class MCPConfigSynchronizer:
         success_count = sum(1 for result in sync_results.values() if result.get('success', False))
         total_count = len(sync_results)
         
-        # Get server endpoint for reference
-        server_endpoint = self.config.get('server_endpoint', 'Unknown')
+        # Determine status color and icon
+        if overall_status == "SUCCESS":
+            status_color = "green"
+            status_icon = "✅"
+        elif overall_status == "PARTIAL_SUCCESS":
+            status_color = "yellow"
+            status_icon = "⚠️"
+        else:
+            status_color = "red"
+            status_icon = "❌"
         
-        # Print report header
-        print("\n" + "=" * 80)
-        print(f"MCP CONFIGURATION SYNCHRONIZATION REPORT - {timestamp}")
-        print("=" * 80)
-        print(f"Status: {overall_status}")
+        # Create header panel
+        header_text = f"""[bold white]MCP Configuration Synchronization Report[/bold white]
+[dim]{timestamp}[/dim]
+
+{status_icon} Status: [{status_color}]{overall_status}[/{status_color}]"""
+        
         if source:
-            print(f"Source: {source}")
-        print(f"Apps Configured: {success_count}/{total_count}")
-        print(f"Server Endpoint: {server_endpoint}")
-        print("-" * 80)
-        print("DETAILS:")
+            header_text += f"\n📁 Source: [cyan]{source}[/cyan]"
         
-        # Print details for each app
+        header_text += f"""
+📊 Apps Configured: [bold]{success_count}/{total_count}[/bold]"""
+        
+        console.print()
+        console.print(Panel(header_text, title="🔄 Sync Report", border_style=status_color, padding=(1, 2)))
+        
+        # Create details table
+        table = Table(
+            title="📋 Application Details",
+            box=box.ROUNDED,
+            show_header=True,
+            header_style="bold blue"
+        )
+        table.add_column("App", style="cyan", no_wrap=True, width=15)
+        table.add_column("Status", justify="center", width=8)
+        table.add_column("Action", style="white", width=10)
+        table.add_column("Size", justify="right", width=8)
+        table.add_column("Validation", justify="center", width=12)
+        table.add_column("Details", style="dim", width=30)
+        
+        # Populate table with app details
         for app_name, result in sync_results.items():
             success = result.get('success', False)
-            status_icon = "✓" if success else "✗"
             
-            print(f"{status_icon} {app_name}:")
-            if 'path' in result:
-                print(f"   Path: {result['path']}")
-            
+            # Status icon and color
             if success:
-                print(f"   Action: {result['action']}")
-                print(f"   Size: {result['size']} bytes")
-                
-                # Add validation status if available
-                validation = validation_results.get(app_name, {})
-                if validation:
-                    in_sync = validation.get('in_sync', False)
-                    sync_icon = "✓" if in_sync else "✗"
-                    
-                    if in_sync:
-                        sync_status = "in_sync"
-                    else:
-                        reason = validation.get('reason', 'unknown')
-                        sync_status = f"out_of_sync ({reason})"
-                        
-                        # Add detailed mismatch information if available
-                        if reason == 'mismatch' and 'mismatched_keys' in validation:
-                            mismatched_keys = validation['mismatched_keys']
-                            if len(mismatched_keys) > 0:
-                                print(f"   Validation: {sync_icon} {sync_status}")
-                                print(f"   Mismatched keys:")
-                                for key in mismatched_keys[:5]:  # Show first 5 mismatches to avoid overwhelming
-                                    print(f"      - {key}")
-                                if len(mismatched_keys) > 5:
-                                    print(f"      - ...and {len(mismatched_keys) - 5} more")
-                                continue
-                    
-                    print(f"   Validation: {sync_icon} {sync_status}")
+                status_icon = "✅"
+                status_color = "green"
             else:
-                action = result.get('action', 'failed')
-                print(f"   Action: {action}")
-                if action == 'cancelled':
-                    print(f"   Reason: {result.get('reason', 'operation cancelled by user')}")
-                else:
-                    print(f"   Error: {result.get('error', 'Unknown error')}")
+                status_icon = "❌"
+                status_color = "red"
             
-            print()
+            # Action and size
+            action = result.get('action', 'failed') if success else result.get('action', 'failed')
+            size_str = f"{result.get('size', 0)} B" if success and 'size' in result else "—"
+            
+            # Validation status
+            validation = validation_results.get(app_name, {})
+            if validation and success:
+                in_sync = validation.get('in_sync', False)
+                if in_sync:
+                    validation_display = "[green]✓ in sync[/green]"
+                else:
+                    reason = validation.get('reason', 'unknown')
+                    validation_display = f"[red]✗ {reason}[/red]"
+            else:
+                validation_display = "—"
+            
+            # Details column
+            details = ""
+            if success and 'path' in result:
+                path_parts = str(result['path']).split('/')
+                if len(path_parts) > 3:
+                    details = f".../{'/'.join(path_parts[-2:])}"
+                else:
+                    details = str(result['path'])
+            elif not success:
+                if action == 'cancelled':
+                    details = result.get('reason', 'user cancelled')
+                else:
+                    details = result.get('error', 'Unknown error')[:30] + "..." if len(result.get('error', '')) > 30 else result.get('error', 'Unknown error')
+            
+            table.add_row(
+                f"📱 {app_name}",
+                f"[{status_color}]{status_icon}[/{status_color}]",
+                action,
+                size_str,
+                validation_display,
+                details
+            )
         
-        print("=" * 80)
+        console.print(table)
+        console.print()
         return overall_status
     
     def sync_from_file(self, app_name_or_path, force=False):
