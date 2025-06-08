@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
+"""
+MCP Core Engine - Core classes and functionality for MCP configuration management.
+
+This module contains the core synchronization engine, format handlers, and daemon
+functionality for managing Model Context Protocol (MCP) server configurations
+across multiple applications.
+"""
+
 import json
 import os
 from pathlib import Path
 import logging
 from datetime import datetime
-import argparse
 import sys
 import time
 import signal
@@ -843,86 +850,3 @@ class MCPConfigSynchronizer:
             logger.error(f"MCP configuration synchronization from source completed with issues")
             return False
 
-def main():
-    """Main function to synchronize MCP configurations."""
-    parser = argparse.ArgumentParser(description="Synchronize MCP configuration across multiple applications")
-    parser.add_argument('--source', type=str, help="Source app or file path to sync from")
-    parser.add_argument('--daemon', action='store_true', help="Run in daemon mode to continuously watch for changes")
-    parser.add_argument('--watch', type=str, help="Comma-separated list of apps to watch (default: all)")
-    parser.add_argument('--debounce', type=float, default=2.0, help="Debounce delay in seconds (default: 2.0)")
-    parser.add_argument('--watch-once', action='store_true', help="Watch for changes once, then exit")
-    parser.add_argument('--timeout', type=int, help="Timeout in seconds for --watch-once mode")
-    parser.add_argument('--force', action='store_true', help="Skip confirmation for destructive operations")
-    args = parser.parse_args()
-    
-    synchronizer = MCPConfigSynchronizer()
-    
-    # Parse watch apps if specified
-    watch_apps = None
-    if args.watch:
-        watch_apps = [app.strip() for app in args.watch.split(',')]
-        # Validate app names
-        invalid_apps = [app for app in watch_apps if app not in synchronizer.CONFIG_FILES]
-        if invalid_apps:
-            logger.error(f"Invalid app names: {', '.join(invalid_apps)}")
-            logger.error(f"Valid apps: {', '.join(synchronizer.CONFIG_FILES.keys())}")
-            sys.exit(1)
-    
-    if args.daemon or args.watch_once:
-        # Run in daemon/watch mode
-        daemon = MCPSyncDaemon(synchronizer, watch_apps, args.debounce)
-        
-        if args.watch_once:
-            # Watch once with optional timeout
-            logger.info("Starting one-time watch mode")
-            if args.timeout:
-                logger.info(f"Will timeout after {args.timeout} seconds")
-            
-            try:
-                daemon.observer.start()
-                start_time = time.time()
-                
-                while True:
-                    time.sleep(0.1)
-                    if args.timeout and (time.time() - start_time) >= args.timeout:
-                        logger.info("Timeout reached, exiting watch mode")
-                        break
-            except KeyboardInterrupt:
-                logger.info("Watch mode interrupted by user")
-            finally:
-                daemon.observer.stop()
-                daemon.observer.join()
-        else:
-            # Run as continuous daemon
-            daemon.start()
-        
-        sys.exit(0)
-    
-    elif args.source:
-        # Sync from specified source
-        success = synchronizer.sync_from_file(args.source, force=args.force)
-        if success:
-            logger.info("MCP configuration synchronization completed successfully")
-            sys.exit(0)
-        else:
-            logger.error("MCP configuration synchronization failed")
-            sys.exit(1)
-    else:
-        # Use default config
-        sync_results = synchronizer.update_configs(force=args.force)
-        
-        # Validate configurations
-        all_in_sync, validation_results = synchronizer.validate_configs()
-        
-        # Print report
-        status = synchronizer.print_report(sync_results, validation_results)
-        
-        if status == "SUCCESS":
-            logger.info("MCP configuration synchronization completed successfully")
-            sys.exit(0)
-        else:
-            logger.error("MCP configuration synchronization failed due to mismatches")
-            sys.exit(1)
-
-if __name__ == "__main__":
-    main()

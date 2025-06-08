@@ -15,23 +15,41 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Basic synchronization with default config
-source venv/bin/activate && python3 mcp_config_sync.py
+source venv/bin/activate && python3 mcp_sync.py
 
 # Sync from existing application config as source
-source venv/bin/activate && python3 mcp_config_sync.py --source Claude
-source venv/bin/activate && python3 mcp_config_sync.py --source VSCode
+source venv/bin/activate && python3 mcp_sync.py --source Claude
+source venv/bin/activate && python3 mcp_sync.py --source VSCode
 
 # Real-time daemon mode (continuous monitoring)
-source venv/bin/activate && python3 mcp_config_sync.py --daemon
+source venv/bin/activate && python3 mcp_sync.py --daemon
 
 # Watch specific applications only
-source venv/bin/activate && python3 mcp_config_sync.py --daemon --watch Claude,VSCode,Cursor
+source venv/bin/activate && python3 mcp_sync.py --daemon --watch Claude,VSCode,Cursor
 
 # One-time watch with timeout
-source venv/bin/activate && python3 mcp_config_sync.py --watch-once --timeout 30
+source venv/bin/activate && python3 mcp_sync.py --watch-once --timeout 30
 
 # Safety features - destructive operation protection
-source venv/bin/activate && python3 mcp_config_sync.py --source Claude --force
+source venv/bin/activate && python3 mcp_sync.py --source Claude --force
+
+# Terminal UI - Beautiful interactive interface for managing MCP servers
+source venv/bin/activate && python3 mcp_ui.py
+
+# Simple UI - Clean menu-driven interface (recommended)
+source venv/bin/activate && python3 simple_ui.py
+
+# Arrow Key UI - Beautiful interface with arrow key navigation
+source venv/bin/activate && python3 arrow_ui.py
+
+# Demo UI - Safe testing with sample data (no real config changes)
+source venv/bin/activate && python3 demo_ui.py
+
+# Simple Demo - Clean demo with menu navigation
+source venv/bin/activate && python3 simple_demo.py
+
+# Arrow Demo - Test arrow key navigation with sample data
+source venv/bin/activate && python3 arrow_demo.py
 ```
 
 ## Architecture
@@ -96,18 +114,18 @@ The project requires a Python virtual environment due to macOS externally-manage
 ### Testing Workflow
 
 1. Activate virtual environment: `source venv/bin/activate`
-2. Run synchronization from a source: `python3 mcp_config_sync.py --source Claude`
+2. Run synchronization from a source: `python3 mcp_sync.py --source Claude`
 3. Verify success status and "in_sync" validation for all applications
 4. Check configuration files are properly updated with consistent MCP data
 
 ### Safety Feature Testing
 
 To test destructive operation protection:
-1. Create a test config with MCP servers: `python3 mcp_config_sync.py --source Claude`
+1. Create a test config with MCP servers: `python3 mcp_sync.py --source Claude`
 2. Create empty config file: `{"mcpServers": {}}`
-3. Test warning system: `python3 mcp_config_sync.py --source empty_config.json`
+3. Test warning system: `python3 mcp_sync.py --source empty_config.json`
 4. Verify user prompt shows servers that will be removed
-5. Test force bypass: `python3 mcp_config_sync.py --source empty_config.json --force`
+5. Test force bypass: `python3 mcp_sync.py --source empty_config.json --force`
 
 ### Command Line Options
 
@@ -189,6 +207,229 @@ To test destructive operation protection:
 - **Error Recovery**: Automatic restart on crashes, with throttling
 - **Permissions**: Handle elevated privileges where required
 - **Configuration**: Service-specific config options (log levels, watch lists, etc.)
+
+### Simple Terminal UI Application (Recommended)
+
+**Goal**: Provide a clean, menu-driven terminal interface for managing MCP servers with reliable navigation and zero complexity.
+
+#### Technology Stack
+
+**Framework**: **Rich + Python**
+- Beautiful terminal output with Rich styling and panels
+- Simple menu-driven navigation - no complex widgets
+- Zero dependencies on mouse or advanced keyboard navigation
+- Pure prompt-based interaction for maximum reliability
+
+#### Key Features
+
+**📱 Application Management**:
+- Simple numbered menu to switch between applications
+- Clear current application display with server count
+- Automatic configuration loading and saving
+
+**🔧 MCP Server Management**:
+- Numbered menu selection for all server operations
+- Step-by-step prompts for adding/editing servers
+- JSON validation with clear error messages
+- Confirmation dialogs for destructive operations
+
+**🔄 Synchronization Controls**:
+- One-button sync to all applications
+- Interactive selection for partial sync
+- Real-time progress feedback and results
+- Built-in safety validation
+
+**📊 Status Display**:
+- Beautiful tables showing all application status
+- Visual indicators for sync state and server counts
+- Clear format information for each application
+
+#### Usage Instructions
+
+**Launch Simple UI**:
+```bash
+# Run the simple menu-driven UI (recommended)
+source venv/bin/activate && python3 simple_ui.py
+
+# Try the safe demo with sample data
+source venv/bin/activate && python3 simple_demo.py
+```
+
+**Navigation**:
+- Use **number keys** to select menu options
+- Use **Enter** to confirm selections
+- Use **Q** to quit at any time
+- All prompts have sensible defaults
+
+**Menu Options**:
+1. **Switch Application** - Choose which app to manage
+2. **Add Server** - Create new MCP server with guided prompts
+3. **Edit Server** - Modify existing server configuration
+4. **Delete Server** - Remove server with confirmation
+5. **Sync All Apps** - Push current servers to all applications
+6. **Sync Selected Apps** - Choose target applications for sync
+7. **Show App Status** - View sync status across all apps
+8. **Refresh Data** - Reload configuration data
+Q. **Quit** - Exit the application
+
+#### Benefits
+
+- **Zero Navigation Issues**: No table selection problems or complex widgets
+- **Crystal Clear Interface**: Rich formatting with panels and tables
+- **Reliable Operation**: Simple prompts that always work
+- **Safe by Design**: Confirmation dialogs and clear feedback
+- **Easy to Use**: Intuitive numbered menus and guided workflows
+
+### Arrow Key Navigation UI Application (Best of Both Worlds)
+
+**Goal**: Combine the reliability of menu-driven interfaces with the satisfaction of arrow key navigation.
+
+#### Technology Stack
+
+**Framework**: **Rich + Custom Input Handling**
+- Beautiful Rich styling for visual appeal
+- Custom cross-platform keyboard input detection
+- Arrow key navigation for menu selection
+- Prompt-based forms for data entry
+
+#### Key Features
+
+**🏹 Arrow Key Navigation**:
+- Use `↑↓` arrows to navigate through menu options
+- Visual highlighting shows current selection
+- `Enter` to select, `Q` to quit, `Esc` to cancel
+- Number keys for direct selection (1-9)
+
+**📱 Application Management**:
+- Arrow key selection for switching applications  
+- Clear visual feedback for current selection
+- Automatic configuration loading and display
+
+**🔧 Server Management**:
+- Arrow key navigation for server selection
+- Guided prompts for editing server details
+- Safe deletion with confirmation dialogs
+
+**🔄 Synchronization**:
+- Menu-driven sync options with arrow navigation
+- Interactive application selection for partial sync
+- Clear progress feedback and results
+
+#### Usage Instructions
+
+**Launch Arrow Key UI**:
+```bash
+# Run the arrow key navigation interface
+source venv/bin/activate && python3 arrow_ui.py
+
+# Try the demo with sample data
+source venv/bin/activate && python3 arrow_demo.py
+```
+
+**Navigation Controls**:
+- **↑↓ Arrows**: Navigate menu options
+- **Enter**: Select highlighted option
+- **Q**: Quit application
+- **Esc**: Cancel current operation
+- **1-9**: Direct selection by number
+- **Ctrl+C**: Emergency exit
+
+#### Benefits
+
+- **Satisfying Navigation**: Arrow keys feel natural and responsive
+- **Visual Feedback**: Clear highlighting shows current selection
+- **Reliable Input**: Combines arrow keys with proven prompt system
+- **Cross-Platform**: Works on Windows, macOS, and Linux
+- **No Widget Bugs**: Custom input handling avoids complex widget issues
+
+### Terminal UI Application (Advanced)
+
+**Goal**: Provide a beautiful, interactive terminal interface for managing MCP servers across multiple applications with real-time synchronization capabilities.
+
+#### Technology Stack
+
+**Framework**: **Textual + Rich + Python**
+- Beautiful terminal user interfaces with full keyboard navigation
+- Cross-platform compatibility (macOS/Linux/Windows)
+- No mouse required - 100% keyboard accessible
+- Direct integration with existing Python classes
+- Real-time updates and validation feedback
+
+#### Key Features
+
+**📱 Application Management**:
+- Switch between 6 supported applications (Claude, VSCode, Cursor, etc.)
+- View real-time sync status for all applications
+- Visual indicators (✅/⚠️/❌) for sync state and server counts
+- Application-specific configuration format handling
+
+**🔧 MCP Server Management**:
+- Add new MCP servers with form-based input validation
+- Edit existing servers with pre-populated forms
+- Delete servers with confirmation
+- Support for command, arguments, and environment variables
+- JSON validation for environment variable configuration
+
+**🔄 Synchronization Controls**:
+- Sync current application's servers to all other applications
+- Selective sync with checkbox selection for servers and target apps
+- Real-time progress feedback and error reporting
+- Safety validation with destructive operation protection
+
+**⌨️ Keyboard Navigation (No Mouse Required)**:
+- `q` - Quit application
+- `a` - Add new MCP server
+- `e` - Edit selected server
+- `d` - Delete selected server
+- `s` - Open sync configuration dialog
+- `r` - Refresh all data
+- `1` - Sync all servers to all apps
+- `Tab/Shift+Tab` - Navigate between sections
+- `↑↓` - Navigate lists and tables
+- `Enter` - Select items
+- `Space` - Toggle selections in sync dialog
+
+#### Usage Instructions
+
+**Launch Terminal UI**:
+```bash
+# Run the interactive terminal UI
+source venv/bin/activate && python3 mcp_ui.py
+
+# Run demo with sample data (safe testing)
+source venv/bin/activate && python3 demo_ui.py
+```
+
+**Basic Workflow**:
+1. **Select Application**: Choose which app's MCP servers to manage from the dropdown
+2. **Manage Servers**: Add, edit, or delete MCP servers using the sidebar controls
+3. **Sync Applications**: Use sync buttons to propagate changes across all applications
+4. **Monitor Status**: Check the main panel for real-time sync status across all apps
+
+**Demo Mode**:
+- Run `python3 demo_ui.py` for safe testing with temporary configurations
+- Includes sample MCP servers (filesystem, git, database) for demonstration
+- No impact on real configuration files - perfect for learning the interface
+
+#### Architecture Details
+
+**Main Components**:
+- **MCPManagerApp**: Main application class with responsive layout
+- **ServerFormScreen**: Modal dialog for adding/editing servers with validation
+- **SyncScreen**: Modal dialog for selective synchronization with checkboxes
+- **MCPServer**: Data class for server configuration with JSON serialization
+
+**Real-time Features**:
+- Automatic config file detection and format recognition
+- Live validation of server configurations before saving
+- Immediate sync status updates after operations
+- Error handling with user-friendly notifications
+
+**Integration with CLI**:
+- Uses same MCPConfigSynchronizer classes as command-line tool
+- Maintains compatibility with existing configuration files
+- Preserves all safety features (destructive operation protection)
+- Seamless switching between terminal UI and CLI workflows
 
 ### GUI Application Implementation Plan (Planned)
 
@@ -328,7 +569,7 @@ interface DestructiveOperation {
 ```python
 from fastapi import FastAPI, WebSocket, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from mcp_config_sync import MCPConfigSynchronizer, MCPSyncDaemon
+from mcp_core import MCPConfigSynchronizer, MCPSyncDaemon
 import asyncio
 import json
 from typing import List, Dict, Any
@@ -480,3 +721,110 @@ async def websocket_sync_updates(websocket: WebSocket):
 - Background validation with progressive UI updates
 
 This GUI implementation plan builds upon the existing robust Python foundation while creating an accessible, modern interface that serves both technical and non-technical users. The phased approach ensures rapid iteration cycles and early user feedback integration.
+
+## Key Learnings and Best Practices
+
+### JSON Input Design Patterns
+
+**Multi-Format Support**: Supporting three different JSON input formats significantly improves user experience when working with documentation:
+- Complete configurations from official docs
+- Partial server configs for quick addition
+- README snippets that can be pasted directly
+
+**Auto-Detection Strategy**: Implementing smart format detection with auto-wrapping reduces friction:
+```python
+# Handle partial configs by auto-wrapping
+if not json_input.startswith('{'):
+    json_input = '{' + json_input + '}'
+```
+
+**Multi-line Input Handling**: Using EOF detection (Ctrl+D/Ctrl+Z) for multi-line JSON input is more reliable than single-line prompts for complex configurations.
+
+### User Interface Design Principles
+
+**Server Overview First**: Showing a comprehensive overview at startup provides immediate context and understanding of the configuration landscape before diving into specific management tasks.
+
+**Granular Control**: Forcing users to explicitly select servers and target applications prevents accidental broad syncs and makes operations more intentional.
+
+**Application Context**: Always displaying which application is being modified eliminates confusion in multi-application environments.
+
+**Progressive Disclosure**: Starting with overview, then drilling down to specific tasks creates a natural workflow that builds understanding.
+
+### Safety and Validation Patterns
+
+**Multiple Confirmation Points**: Implementing confirmation at multiple stages (source selection, server selection, target selection, final confirmation) creates safety without being overly restrictive.
+
+**Clear Feedback**: Providing immediate visual feedback on selections and operations helps users understand what will happen before committing to actions.
+
+**Format-Aware Validation**: Validating configurations against MCP requirements while preserving application-specific settings prevents corruption.
+
+### Technical Implementation Insights
+
+**Cross-Platform Input Handling**: Implementing custom keyboard input detection avoids dependencies on complex widget libraries while maintaining cross-platform compatibility.
+
+**JSON Flexibility**: Accepting various JSON formats from documentation reduces the need for users to manually reformat configurations.
+
+**State Management**: Maintaining clear separation between current application context and global configuration state simplifies the user mental model.
+
+**Error Recovery**: Providing clear error messages with specific guidance helps users correct configuration issues quickly.
+
+These patterns and principles have proven effective in creating an intuitive, safe, and powerful interface for managing complex MCP configurations across multiple applications.
+
+## Important Development Guidelines
+
+### File Management
+- Do what has been asked; nothing more, nothing less
+- NEVER create files unless they're absolutely necessary for achieving your goal
+- ALWAYS prefer editing an existing file to creating a new one
+- NEVER proactively create documentation files (*.md) or README files unless explicitly requested
+
+### MCP Configuration Manager Development
+
+#### Primary Interface (`mcp_config_manager.py`)
+- This is the main user interface - prioritize development and testing here
+- Always show server overview at startup for immediate context
+- Support multiple JSON input formats from documentation
+- Implement granular sync control (select servers and target apps)
+- Display current application context clearly when adding/editing servers
+
+#### Interface Hierarchy
+1. **mcp_config_manager.py** - Primary terminal interface (arrow key navigation + JSON input)
+2. **mcp_sync.py** - Command-line tool for automation and scripting
+3. **mcp_core.py** - Core engine with all synchronization classes and logic
+4. **simple_ui.py** - Alternative menu-driven interface
+5. **mcp_ui.py** - Advanced Textual-based interface
+6. **demo_*.py** - Demo interfaces for testing and learning
+
+#### Key Design Principles
+- **Overview First**: Show comprehensive server overview before specific tasks
+- **JSON Flexibility**: Accept any JSON format from documentation (complete, partial, README snippets)
+- **Granular Control**: Let users choose specific servers and target applications
+- **Safety First**: Multiple confirmation points for destructive operations
+- **Clear Context**: Always show which application is being modified
+- **Cross-Platform**: Ensure keyboard input works on Windows, macOS, and Linux
+
+#### Testing Priorities
+1. Server overview display and sync status validation
+2. JSON input parsing for all three supported formats
+3. Arrow key navigation and number key fallbacks
+4. Granular sync workflow (server selection → app selection → confirmation)
+5. Application context display in add/edit workflows
+6. Cross-platform keyboard input handling
+
+#### Common Commands Reference
+
+```bash
+# Primary interface (recommended for most users)
+source venv/bin/activate && python3 mcp_config_manager.py
+
+# CLI for automation and scripting
+source venv/bin/activate && python3 mcp_sync.py --source Claude
+
+# Alternative interfaces
+source venv/bin/activate && python3 simple_ui.py
+source venv/bin/activate && python3 mcp_ui.py
+
+# Demos for testing
+source venv/bin/activate && python3 demo_ui.py
+source venv/bin/activate && python3 arrow_demo.py
+```
