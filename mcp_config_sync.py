@@ -155,6 +155,45 @@ class VSCodeHandler(ConfigFormatHandler):
     def get_format_name(self) -> str:
         return "VSCode (mcp.servers)"
 
+class CursorHandler(ConfigFormatHandler):
+    """Handler for Cursor's mixed mcpServers + mcp.servers configuration format."""
+    
+    def detect_format(self, config_data: dict) -> bool:
+        """Detect Cursor's specific mixed format with both mcpServers and mcp sections."""
+        return ('mcpServers' in config_data and 
+                'mcp' in config_data and 
+                isinstance(config_data['mcp'], dict))
+    
+    def extract_mcp_config(self, config_data: dict) -> dict:
+        """Extract MCP configuration from Cursor's mixed format, preferring mcp.servers."""
+        # Prefer the mcp section if it exists, as it's the newer format
+        if 'mcp' in config_data and isinstance(config_data['mcp'], dict):
+            return config_data['mcp']
+        
+        # Fallback to mcpServers if mcp section is missing/invalid
+        mcp_servers = config_data.get('mcpServers', {})
+        return {
+            'format': 'cursor_legacy',
+            'servers': mcp_servers
+        }
+    
+    def merge_mcp_config(self, existing_config: dict, mcp_config: dict) -> dict:
+        """Merge MCP config into Cursor format, cleaning up legacy mcpServers."""
+        updated_config = existing_config.copy()
+        
+        # Use standard MCP format for the new section
+        updated_config['mcp'] = mcp_config
+        
+        # Remove legacy mcpServers section to avoid conflicts
+        if 'mcpServers' in updated_config:
+            logger.debug("Removing legacy mcpServers section from Cursor config")
+            del updated_config['mcpServers']
+        
+        return updated_config
+    
+    def get_format_name(self) -> str:
+        return "Cursor (mixed)"
+
 class LegacyMCPHandler(ConfigFormatHandler):
     """Handler for legacy/empty configurations that need to be initialized."""
     
@@ -335,6 +374,7 @@ class MCPConfigSynchronizer:
     FORMAT_HANDLERS = [
         ClaudeDesktopHandler(),
         VSCodeHandler(),
+        CursorHandler(),
         StandardMCPHandler(),
         LegacyMCPHandler()  # Fallback handler
     ]
@@ -343,7 +383,7 @@ class MCPConfigSynchronizer:
     APP_HANDLERS = {
         'Claude': ClaudeDesktopHandler(),
         'VSCode': VSCodeHandler(),
-        'Cursor': StandardMCPHandler(),
+        'Cursor': CursorHandler(),
         'Windsurf': StandardMCPHandler(),
         'Roocode-VSCode': StandardMCPHandler(),
         'Roocode-Windsurf': StandardMCPHandler()
@@ -615,6 +655,9 @@ class MCPConfigSynchronizer:
             
             if not is_in_sync:
                 logger.warning(f"Config mismatch detected for {app_name} at {config_path}")
+                logger.warning(f"Mismatched keys: {', '.join(mismatched_keys)}")
+                logger.debug(f"Reference config for {app_name}: {reference_config}")
+                logger.debug(f"App config for {app_name}: {mcp_config}")
                 validation_results[app_name] = {
                     'in_sync': False, 
                     'reason': 'mismatch',
@@ -702,19 +745,7 @@ class MCPConfigSynchronizer:
             action = result.get('action', 'failed') if success else result.get('action', 'failed')
             size_str = f"{result.get('size', 0)} B" if success and 'size' in result else "—"
             
-            # Validation status
-            validation = validation_results.get(app_name, {})
-            if validation and success:
-                in_sync = validation.get('in_sync', False)
-                if in_sync:
-                    validation_display = "[green]✓ in sync[/green]"
-                else:
-                    reason = validation.get('reason', 'unknown')
-                    validation_display = f"[red]✗ {reason}[/red]"
-            else:
-                validation_display = "—"
-            
-            # Details column
+            # Details column (initialize first)
             details = ""
             if success and 'path' in result:
                 path_parts = str(result['path']).split('/')
@@ -727,6 +758,24 @@ class MCPConfigSynchronizer:
                     details = result.get('reason', 'user cancelled')
                 else:
                     details = result.get('error', 'Unknown error')[:30] + "..." if len(result.get('error', '')) > 30 else result.get('error', 'Unknown error')
+            
+            # Validation status
+            validation = validation_results.get(app_name, {})
+            if validation and success:
+                in_sync = validation.get('in_sync', False)
+                if in_sync:
+                    validation_display = "[green]✓ in sync[/green]"
+                else:
+                    reason = validation.get('reason', 'unknown')
+                    mismatched_keys = validation.get('mismatched_keys', [])
+                    if mismatched_keys:
+                        validation_display = f"[red]✗ {reason}[/red]"
+                        # Show first mismatched key in details if there are mismatches
+                        details = f"Mismatch: {mismatched_keys[0]}"
+                    else:
+                        validation_display = f"[red]✗ {reason}[/red]"
+            else:
+                validation_display = "—"
             
             table.add_row(
                 f"📱 {app_name}",
