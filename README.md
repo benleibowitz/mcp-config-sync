@@ -34,8 +34,8 @@ A comprehensive toolkit for managing Model Context Protocol (MCP) server configu
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/benleibowitz/mcp-config-sync.git
-cd mcp-config-sync
+git clone https://github.com/benleibowitz/mcp-configuration-manager.git
+cd mcp-configuration-manager
 ```
 
 2. Setup virtual environment and install dependencies:

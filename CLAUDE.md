@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MCP Config Synchronizer is a Python utility that synchronizes Model Context Protocol (MCP) configurations across multiple applications (Claude Desktop, VSCode, Cursor, Windsurf, Roocode) with real-time automatic syncing capabilities. The tool handles different configuration formats and provides daemon mode for continuous monitoring.
+MCP Configuration Manager is a comprehensive toolkit for managing Model Context Protocol (MCP) server configurations across multiple applications. It features both powerful command-line tools and an intuitive terminal user interface with arrow key navigation. The system handles different configuration formats, provides real-time automatic syncing capabilities, and offers granular control over server management and synchronization.
 
 ## Common Commands
 
@@ -141,7 +141,7 @@ To test destructive operation protection:
 
 ### Cross-Platform Background Service Implementation (Planned)
 
-**Goal**: Automatically start the MCP Config Synchronizer daemon at system startup/login without manual intervention.
+**Goal**: Automatically start the MCP Configuration Manager daemon at system startup/login without manual intervention.
 
 **Implementation Strategy**: Hybrid approach combining built-in service installation with platform-specific scripts.
 
