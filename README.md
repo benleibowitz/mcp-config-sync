@@ -38,14 +38,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Note**: Virtual environment is required on macOS due to externally-managed-environment restrictions.
-
 ## 📖 Usage
-
-**First, activate the virtual environment:**
-```bash
-source venv/bin/activate
-```
 
 ### One-Time Synchronization
 
@@ -54,7 +47,7 @@ Apply the default configuration to all applications:
 ./mcp_config_sync.py
 ```
 
-Sync from an existing application config:
+Sync from an existing application config, using that as the source of truth:
 ```bash
 ./mcp_config_sync.py --source Claude
 ./mcp_config_sync.py --source VSCode
