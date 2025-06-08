@@ -118,3 +118,74 @@ To test destructive operation protection:
 - `--timeout <seconds>`: Timeout for --watch-once mode
 - `--debounce <seconds>`: Delay before processing detected changes (default: 2.0)
 - `--force`: Skip confirmation prompts for destructive operations
+
+## Future Enhancements
+
+### Cross-Platform Background Service Implementation (Planned)
+
+**Goal**: Automatically start the MCP Config Synchronizer daemon at system startup/login without manual intervention.
+
+**Implementation Strategy**: Hybrid approach combining built-in service installation with platform-specific scripts.
+
+#### Platform-Specific Service Options
+
+**macOS**:
+1. **launchd** (Primary) - Native macOS service manager with plist configuration
+2. **Login Items** (Fallback) - GUI-based auto-start mechanism
+
+**Linux**:
+1. **systemd** (Primary) - Modern Linux service manager with unit files
+2. **cron @reboot** (Fallback) - Universal Linux option for startup scripts
+3. **Desktop autostart** (Alternative) - ~/.config/autostart/ for desktop environments
+
+**Windows**:
+1. **Windows Service** (Primary) - Native Windows service with service wrapper
+2. **Task Scheduler** (Fallback) - Built-in Windows scheduler
+3. **Startup folder** (Simple) - User startup directory for basic auto-start
+
+#### Implementation Approaches
+
+**Option A: Multiple Install Scripts**
+- `install-service-macos.sh` - macOS launchd service installation
+- `install-service-linux.sh` - Linux systemd/cron service installation  
+- `install-service-windows.bat` - Windows service/task scheduler installation
+- Universal `install-service.py` - Platform detection and delegation
+
+**Option B: Single Smart Installer**
+- One `install-service.py` script with platform auto-detection
+- Chooses optimal service method per platform
+- Provides fallback options if primary method fails
+- Handles service configuration and file generation
+
+**Option C: Built-in Service Mode** (Recommended)
+- Add `--install-service` flag to main script for service installation
+- Add `--uninstall-service` flag for service removal
+- Handles platform detection and service management internally
+- Includes service status checking and management commands
+
+#### Recommended Implementation Plan
+
+**Phase 1**: Built-in service installation (`--install-service` flag)
+- Detect platform (macOS/Linux/Windows)
+- Generate appropriate service configuration files
+- Install service using platform-native tools
+- Provide status feedback and troubleshooting info
+
+**Phase 2**: Platform-specific installation scripts
+- Advanced users can use dedicated scripts for custom configurations
+- Provides more granular control over service parameters
+- Supports enterprise deployment scenarios
+
+**Phase 3**: Service management commands
+- `--service-status` - Check if service is running
+- `--restart-service` - Restart the background service
+- `--service-logs` - View service logs and diagnostics
+
+#### Technical Considerations
+
+- **Virtual Environment Handling**: Services must properly activate Python venv
+- **Path Resolution**: Absolute paths required for service configurations
+- **Logging**: Separate log files for background service operation
+- **Error Recovery**: Automatic restart on crashes, with throttling
+- **Permissions**: Handle elevated privileges where required
+- **Configuration**: Service-specific config options (log levels, watch lists, etc.)

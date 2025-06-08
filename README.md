@@ -42,40 +42,45 @@ pip install -r requirements.txt
 
 ## 📖 Usage
 
+**First, activate the virtual environment:**
+```bash
+source venv/bin/activate
+```
+
 ### One-Time Synchronization
 
 Apply the default configuration to all applications:
 ```bash
-source venv/bin/activate && python3 mcp_config_sync.py
+./mcp_config_sync.py
 ```
 
 Sync from an existing application config:
 ```bash
-source venv/bin/activate && python3 mcp_config_sync.py --source Claude
-source venv/bin/activate && python3 mcp_config_sync.py --source VSCode
-source venv/bin/activate && python3 mcp_config_sync.py --source Cursor
+./mcp_config_sync.py --source Claude
+./mcp_config_sync.py --source VSCode
+./mcp_config_sync.py --source Cursor
 ```
 
 ### 🤖 Automatic Real-Time Sync
 
 **Continuous daemon mode** (watches all apps):
 ```bash
-source venv/bin/activate && python3 mcp_config_sync.py --daemon
+./mcp_config_sync.py --daemon
 ```
 
 **Watch specific applications**:
 ```bash
-source venv/bin/activate && python3 mcp_config_sync.py --daemon --watch Claude,VSCode,Cursor
+./mcp_config_sync.py --daemon --watch Claude,VSCode,Cursor
 ```
 
 **One-time watch with timeout**:
 ```bash
-source venv/bin/activate && python3 mcp_config_sync.py --watch-once --timeout 30
+./mcp_config_sync.py --watch-once --timeout 30
 ```
 
 **Custom debounce delay** (prevents rapid successive syncs):
 ```bash
-source venv/bin/activate && python3 mcp_config_sync.py --daemon --debounce 5.0
+./mcp_config_sync.py --daemon --debounce 5.0
 ```
 
 ### 🛡️ Safety Features
@@ -83,20 +88,20 @@ source venv/bin/activate && python3 mcp_config_sync.py --daemon --debounce 5.0
 **Destructive operation protection** - warns when sync would remove existing MCP servers:
 ```bash
 # Interactive confirmation (default behavior)
-source venv/bin/activate && python3 mcp_config_sync.py --source empty_config.json
+./mcp_config_sync.py --source empty_config.json
 
 # Skip confirmation for automation
-source venv/bin/activate && python3 mcp_config_sync.py --source empty_config.json --force
+./mcp_config_sync.py --source empty_config.json --force
 ```
 
 ### Advanced Options
 
 ```bash
 # Custom file path as source
-source venv/bin/activate && python3 mcp_config_sync.py --source /path/to/custom/config.json
+./mcp_config_sync.py --source /path/to/custom/config.json
 
 # View available applications
-source venv/bin/activate && python3 mcp_config_sync.py --help
+./mcp_config_sync.py --help
 ```
 
 ## 🏗️ How It Works
