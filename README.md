@@ -1,23 +1,46 @@
 # MCP Configuration Manager
 
-A comprehensive toolkit for managing Model Context Protocol (MCP) server configurations across multiple applications, featuring both command-line tools and an intuitive terminal user interface.
+A comprehensive terminal interface for managing Model Context Protocol (MCP) server configurations across multiple applications, featuring intuitive arrow key navigation, flexible JSON input, and granular sync control.
+
+## Quick Start
+1. Clone the repository:
+```bash
+git clone https://github.com/benleibowitz/mcp-configuration-manager.git
+cd mcp-configuration-manager
+```
+
+2) Setup a Python virtual environment
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+3) Install the required packages
+```bash
+pip install -r requirements.txt
+```
+
+4) Run the MCP Configuration Manager
+```bash
+./mcp_config_manager.py
+```
 
 ## 🚀 Features
 
-### Core Functionality
-- **Multi-Format Support**: Handles different MCP configuration formats across applications
-- **Real-Time Sync**: Automatic file watching with instant synchronization
-- **Format Detection**: Automatically detects and converts between configuration formats
-- **Conflict Resolution**: Intelligent handling of simultaneous changes with debouncing
-- **Comprehensive Coverage**: Supports 6+ applications with different MCP implementations
-- **Preservation**: Maintains application-specific settings while syncing MCP configs
-- **🛡️ Safety Protection**: Prevents accidental loss of MCP servers with confirmation prompts
+### 🎯 Primary Terminal Interface
+- **📊 Server Overview**: Comprehensive view of all MCP servers across all applications at startup
+- **🔧 JSON Input**: Paste configurations directly from documentation (handles 3 different formats)
+- **🎮 Arrow Key Navigation**: Intuitive navigation with visual highlighting
+- **🎛️ Granular Control**: Select specific servers and target applications for syncing
+- **📱 Application Context**: Always shows which app you're managing
+- **⚡ Real-time Validation**: Live sync status across all applications
 
-### User Interfaces
-- **🖥️ Terminal UI**: Beautiful arrow key navigation interface for interactive management
-- **⚡ Command Line**: Powerful CLI tools for automation and scripting
-- **📊 Server Overview**: Comprehensive view of all MCP servers across applications
-- **🎯 Granular Control**: Select specific servers and target applications for syncing
+### 🛠️ Core Engine
+- **🔄 Multi-Format Support**: Handles different MCP configuration formats across applications
+- **⏱️ Real-Time Sync**: Automatic file watching with instant synchronization
+- **🔍 Format Detection**: Automatically detects and converts between configuration formats
+- **⚖️ Conflict Resolution**: Intelligent handling of simultaneous changes with debouncing
+- **🛡️ Safety Protection**: Prevents accidental loss of MCP servers with confirmation prompts
 
 ## 📱 Supported Applications
 
@@ -30,98 +53,18 @@ A comprehensive toolkit for managing Model Context Protocol (MCP) server configu
 | **Roocode (VSCode)** | `mcp.*` | `~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json` |
 | **Roocode (Windsurf)** | `mcp.*` | `~/Library/Application Support/Windsurf - Next/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json` |
 
-## 🔧 Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/benleibowitz/mcp-configuration-manager.git
-cd mcp-configuration-manager
-```
-
-2. Setup virtual environment and install dependencies:
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
 ## 📖 Usage
 
-### 🖥️ Terminal User Interface (Recommended)
+### 🖥️ Terminal Interface (Primary - Recommended)
 
-**MCP Configuration Manager** - Interactive terminal interface with arrow key navigation:
+**Launch the MCP Configuration Manager:**
 ```bash
-source venv/bin/activate && python3 mcp_config_manager.py
+./mcp_config_manager.py
 ```
 
-**Features:**
-- **MCP Server Overview**: See all servers across all applications at startup
-- **JSON Input**: Paste server configurations directly from READMEs
-- **Add/Edit Servers**: Unified interface for server management
-- **Granular Sync**: Select specific servers and target applications
-- **Real-time Status**: Live sync status and validation across apps
+## 🎯 JSON Input Formats
 
-**Demo Interfaces:**
-```bash
-# Safe demo with sample data (no real config changes)
-source venv/bin/activate && python3 demo_ui.py
-
-# Clean menu-driven interface
-source venv/bin/activate && python3 simple_ui.py
-
-# Arrow key navigation demo
-source venv/bin/activate && python3 arrow_demo.py
-```
-
-### ⚡ Command Line Interface
-
-**One-Time Synchronization:**
-```bash
-# Apply default configuration to all applications
-source venv/bin/activate && python3 mcp_sync.py
-
-# Sync from existing application (use as source of truth)
-source venv/bin/activate && python3 mcp_sync.py --source Claude
-source venv/bin/activate && python3 mcp_sync.py --source VSCode
-source venv/bin/activate && python3 mcp_sync.py --source Cursor
-```
-
-**🤖 Automatic Real-Time Sync:**
-```bash
-# Continuous daemon mode (watches all apps)
-source venv/bin/activate && python3 mcp_sync.py --daemon
-
-# Watch specific applications
-source venv/bin/activate && python3 mcp_sync.py --daemon --watch Claude,VSCode,Cursor
-
-# One-time watch with timeout
-source venv/bin/activate && python3 mcp_sync.py --watch-once --timeout 30
-
-# Custom debounce delay (prevents rapid successive syncs)
-source venv/bin/activate && python3 mcp_sync.py --daemon --debounce 5.0
-```
-
-**🛡️ Safety Features:**
-```bash
-# Interactive confirmation (default behavior)
-source venv/bin/activate && python3 mcp_sync.py --source empty_config.json
-
-# Skip confirmation for automation
-source venv/bin/activate && python3 mcp_sync.py --source empty_config.json --force
-```
-
-**Advanced Options:**
-```bash
-# Custom file path as source
-source venv/bin/activate && python3 mcp_sync.py --source /path/to/custom/config.json
-
-# View available applications
-source venv/bin/activate && python3 mcp_sync.py --help
-```
-
-## 🎯 Server Configuration Formats
-
-The terminal UI supports **three different JSON input formats** you might find in MCP server documentation:
+The terminal interface supports **three different JSON formats** you might find in MCP server documentation:
 
 ### Format 1: Complete Configuration
 ```json
@@ -144,7 +87,7 @@ The terminal UI supports **three different JSON input formats** you might find i
 *(Will prompt for server name)*
 
 ### Format 3: Partial from README
-```json
+```
 "terminal-controller": {
   "command": "uvx",
   "args": ["terminal_controller"]
@@ -154,93 +97,50 @@ The terminal UI supports **three different JSON input formats** you might find i
 
 **Simply copy/paste any of these formats directly from documentation!**
 
-## 🏗️ How It Works
+## 🏗️ Architecture
 
-### Configuration Format Handling
+### Core Components
 
-The tool intelligently detects and converts between different MCP configuration formats:
+- **`mcp_config_manager.py`** - Primary terminal interface with arrow navigation and JSON input
+- **`mcp_core.py`** - Core engine with all synchronization classes and logic
+- **`mcp_ui.py`** - Advanced Textual-based interface
+- **Alternative UIs** - Simple menu-driven and demo interfaces
 
-1. **Claude Desktop Format**:
-   ```json
-   {
-     "mcpServers": {
-       "server-name": { "command": "...", "args": [...] }
-     }
-   }
-   ```
+### How It Works
 
-2. **VSCode Format**:
-   ```json
-   {
-     "other-settings": "...",
-     "mcp": {
-       "inputs": [],
-       "servers": {
-         "server-name": { "command": "...", "args": [...] }
-       }
-     }
-   }
-   ```
+1. **Server Overview**: Shows comprehensive view of all MCP servers across applications
+2. **Format Detection**: Automatically detects and converts between configuration formats
+3. **Granular Control**: Select specific servers and target applications for syncing
+4. **Real-time Validation**: Live sync status and error reporting
+5. **Safety First**: Multiple confirmation steps prevent accidental operations
 
-3. **Standard MCP Format**:
-   ```json
-   {
-     "mcp": {
-       "server_endpoint": "...",
-       "servers": { ... }
-     }
-   }
-   ```
+## 🛠️ Key Improvements
 
-### Automatic Sync Process
+### 🎨 User Experience
+- **Immediate Orientation**: Server overview at startup shows entire configuration landscape
+- **Documentation-Friendly**: Paste any JSON format directly from README files
+- **Visual Navigation**: Arrow keys with clear highlighting and number key fallbacks
+- **Context Awareness**: Always shows which application you're modifying
+- **Progressive Disclosure**: Start with overview, drill down to specific tasks
 
-1. **File Monitoring**: Watches configuration file directories
-2. **Change Detection**: Identifies which application's config changed
-3. **Format Recognition**: Determines source configuration format
-4. **Debounced Sync**: Waits for edits to complete (2-second default)
-5. **Cross-Format Conversion**: Converts to each app's expected format
-6. **Conflict Avoidance**: Prevents sync loops from self-triggered changes
+### 🔧 Technical Excellence
+- **Multi-Format Support**: Handles 4+ different MCP configuration formats
+- **Cross-Platform Input**: Custom keyboard handling for Windows, macOS, and Linux
+- **Smart JSON Detection**: Auto-wraps partial configurations and detects formats
+- **Real-time File Watching**: Automatic synchronization with debouncing
+- **Comprehensive Validation**: Format-aware comparison with detailed reporting
 
-## 🛠️ Enhanced Features & Architecture
-
-### 🎨 Terminal User Interface
-- **MCP Configuration Manager**: Beautiful arrow key navigation interface
-- **JSON Input Support**: Paste configurations directly from documentation
-- **Server Overview**: Comprehensive view of all servers across applications
-- **Granular Control**: Select specific servers and target applications
-- **Real-time Validation**: Live sync status and error reporting
-
-### 🔥 Core Engine Features
-- **Real-time file watching** with automatic synchronization
-- **Multi-format configuration handling** (4+ different formats)
-- **Intelligent conflict resolution** and debouncing
-- **Daemon mode** for continuous monitoring
-- **VSCode settings.json support** with format detection
-
-### 🧠 Smart Architecture
-- **Format-specific handlers** for clean separation of concerns
-- **Automatic format detection** and normalization
-- **Extensible design** for easy addition of new applications
-- **Robust error handling** and comprehensive logging
-
-### 🎯 User Experience
-- **Multiple interfaces**: Terminal UI, CLI, and demo modes
-- **Flexible JSON input**: Supports various documentation formats
-- **Settings preservation** (maintains app-specific configurations)
-- **Cross-platform compatibility** (macOS/Linux/Windows)
-
-### 🔒 Safety & Reliability
-- **Destructive operation protection** with user confirmation prompts
-- **Graceful error handling** for missing/corrupted files
-- **Signal handling** for clean daemon shutdown
-- **Thread-safe operations** for concurrent file access
-- **Format-aware validation** with detailed reporting
+### 🛡️ Safety & Reliability
+- **Multiple Confirmation Points**: Prevents accidental broad syncs
+- **Destructive Operation Protection**: User confirmation with detailed impact information
+- **Format Preservation**: Maintains application-specific settings during sync
+- **Error Recovery**: Clear messages with specific guidance for fixing issues
 
 ## 📋 Requirements
 
 - **Python 3.7+**
-- Dependencies listed in `requirements.txt`
 - **macOS/Linux/Windows** (cross-platform)
+- Dependencies listed in `requirements.txt` (primarily `watchdog` and `rich`)
 
 ## 🚦 Exit Codes
 
@@ -250,3 +150,7 @@ The tool intelligently detects and converts between different MCP configuration 
 ## 📄 License
 
 MIT License
+
+---
+
+**🎯 Perfect for**: Developers managing MCP servers across multiple AI applications who want intuitive, interactive control with comprehensive overview and granular sync capabilities.
