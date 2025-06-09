@@ -403,6 +403,43 @@ class MCPConfigSynchronizer:
     def __init__(self):
         self.config = self.DEFAULT_MCP_CONFIG.copy()
         self.sync_results = {}
+        # Filter CONFIG_FILES to only include apps that are actually installed
+        self._filter_installed_apps()
+    
+    def _filter_installed_apps(self):
+        """Filter CONFIG_FILES to only include applications that are actually installed."""
+        installed_apps = {}
+        
+        for app_name, config_path in self.CONFIG_FILES.items():
+            # Check if the application directory exists
+            # For most apps, we check if the parent directory (where the app stores configs) exists
+            app_dir = None
+            
+            if app_name == 'Claude':
+                app_dir = config_path.parent  # ~/Library/Application Support/Claude/
+            elif app_name == 'VSCode':
+                app_dir = config_path.parent.parent  # ~/Library/Application Support/Code/
+            elif app_name == 'Cursor':
+                app_dir = config_path.parent  # ~/.cursor/
+            elif app_name == 'Windsurf':
+                app_dir = config_path.parent.parent  # ~/.codeium/windsurf/
+            elif app_name.startswith('Roocode'):
+                # For Roocode variants, check if the base application directory exists
+                if 'VSCode' in app_name:
+                    app_dir = Path.home() / 'Library' / 'Application Support' / 'Code'
+                elif 'Windsurf' in app_name:
+                    app_dir = Path.home() / 'Library' / 'Application Support' / 'Windsurf - Next'
+            
+            # Include the app if its directory exists (indicating it's installed)
+            if app_dir and app_dir.exists():
+                installed_apps[app_name] = config_path
+                logger.debug(f"Application {app_name} detected at {app_dir}")
+            else:
+                logger.debug(f"Application {app_name} not found (directory {app_dir} does not exist)")
+        
+        # Update CONFIG_FILES with only installed applications
+        self.CONFIG_FILES = installed_apps
+        logger.info(f"Detected {len(installed_apps)} installed applications: {', '.join(installed_apps.keys())}")
     
     def detect_config_format(self, config_data: dict) -> ConfigFormatHandler:
         """Detect the appropriate format handler for the given configuration."""
